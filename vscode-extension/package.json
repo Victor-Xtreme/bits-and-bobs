@@ -33,6 +33,26 @@
           "contextualTitle": "RepoSense"
         }
       ]
+    },
+    "configuration": {
+      "title": "RepoSense",
+      "properties": {
+        "reposense.backendUrl": {
+          "type": "string",
+          "default": "http://localhost:8000",
+          "description": "URL of the RepoSense backend API server"
+        },
+        "reposense.requestTimeoutMs": {
+          "type": "number",
+          "default": 30000,
+          "description": "HTTP request timeout in milliseconds"
+        },
+        "reposense.pollingIntervalMs": {
+          "type": "number",
+          "default": 2000,
+          "description": "How often to poll for job results (milliseconds)"
+        }
+      }
     }
   },
   "scripts": {

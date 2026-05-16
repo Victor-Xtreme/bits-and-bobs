@@ -33,6 +33,8 @@ const config_1 = require("./config");
 class SidebarProvider {
     constructor(_extensionUri) {
         this._extensionUri = _extensionUri;
+        this._retryCount = 0;
+        this._maxRetries = 3;
     }
     resolveWebviewView(webviewView) {
         this._view = webviewView;
@@ -106,6 +108,8 @@ class SidebarProvider {
         if (this._pollingInterval) {
             clearInterval(this._pollingInterval);
         }
+        // Reset retry count for new polling session
+        this._retryCount = 0;
         const config = (0, config_1.getConfig)();
         // Poll at configured interval
         this._pollingInterval = setInterval(async () => {
@@ -127,9 +131,11 @@ class SidebarProvider {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
             const apiResponse = await response.json();
+            // Reset retry count on successful response
+            this._retryCount = 0;
             // Update progress display
             this._updateProgress(apiResponse.progress);
-            // Handle different response types
+            // Handle different response types based on 'type' field
             if (apiResponse.type === 'result' && apiResponse.payload) {
                 // Analysis completed successfully
                 const result = apiResponse.payload;
@@ -138,11 +144,12 @@ class SidebarProvider {
                     clearInterval(this._pollingInterval);
                     this._pollingInterval = undefined;
                 }
-                // Send completion message with health score
+                // Send completion message with health score from payload.score.score
                 this._view.webview.postMessage({
                     type: 'complete',
                     healthScore: result.score.score,
                     grade: result.score.grade,
+                    summary: result.score.summary,
                     result: result
                 });
             }
@@ -162,15 +169,20 @@ class SidebarProvider {
             // If type is 'request', continue polling (analysis still in progress)
         }
         catch (error) {
-            // Stop polling on error
-            if (this._pollingInterval) {
-                clearInterval(this._pollingInterval);
-                this._pollingInterval = undefined;
+            // Retry logic: don't stop immediately, retry up to maxRetries times
+            this._retryCount++;
+            if (this._retryCount >= this._maxRetries) {
+                // Stop polling after max retries
+                if (this._pollingInterval) {
+                    clearInterval(this._pollingInterval);
+                    this._pollingInterval = undefined;
+                }
+                this._view.webview.postMessage({
+                    type: 'error',
+                    message: `Failed to check results after ${this._maxRetries} retries: ${error instanceof Error ? error.message : String(error)}`
+                });
             }
-            this._view.webview.postMessage({
-                type: 'error',
-                message: `Failed to check results: ${error instanceof Error ? error.message : String(error)}`
-            });
+            // Otherwise, continue polling and retry
         }
     }
     _updateProgress(steps) {

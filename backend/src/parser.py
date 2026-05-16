@@ -288,9 +288,8 @@ async def parse_python_file(rel_path: str, content: str) -> ParsedFile:
                 func = parse_python_function(node, rel_path, None)
                 functions.append(func)
     
-    except SyntaxError:
-        # If parsing fails, return empty structure
-        pass
+    except SyntaxError as e:
+        logger.warning(f"Syntax error in {rel_path}, skipping: {e}")
     
     return ParsedFile(
         path=rel_path,

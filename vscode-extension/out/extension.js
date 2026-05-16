@@ -30,7 +30,9 @@ function activate(context) {
     console.log('RepoSense extension is now active');
     // Register the sidebar provider
     const sidebarProvider = new SidebarProvider_1.SidebarProvider(context.extensionUri);
-    context.subscriptions.push(vscode.window.registerWebviewViewProvider('reposense-sidebar', sidebarProvider));
+    context.subscriptions.push(vscode.window.registerWebviewViewProvider('reposense-sidebar', sidebarProvider), 
+    // Register the provider itself so dispose() gets called on deactivation
+    sidebarProvider);
 }
 exports.activate = activate;
 function deactivate() {

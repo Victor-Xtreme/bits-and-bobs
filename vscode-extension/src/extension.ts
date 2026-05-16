@@ -11,7 +11,9 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.window.registerWebviewViewProvider(
             'reposense-sidebar',
             sidebarProvider
-        )
+        ),
+        // Register the provider itself so dispose() gets called on deactivation
+        sidebarProvider
     );
 }
 
