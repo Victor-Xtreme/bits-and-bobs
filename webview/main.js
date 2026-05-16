@@ -450,7 +450,7 @@ function renderNetworkGraph(architecture) {
         .attr('font-size', 10)
         .attr('dx', 15)
         .attr('dy', 4)
-        .attr('fill', 'var(--vscode-foreground)');
+        .attr('fill', '#ffffff');
     
     // Tooltip
     const tooltip = document.getElementById('nodeTooltip');
@@ -733,7 +733,7 @@ function renderDependencyTree(nodeId, depth) {
         .attr('font-size', 11)
         .attr('dy', nodeRadius + 15)
         .attr('text-anchor', 'middle')
-        .attr('fill', 'var(--vscode-foreground)')
+        .attr('fill', '#ffffff')
         .style('pointer-events', 'none');
     
     // Tooltip
