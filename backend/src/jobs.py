@@ -1,0 +1,191 @@
+"""
+RepoSense Job Management System
+Thread-safe in-memory job store for tracking analysis progress
+"""
+
+import uuid
+from datetime import datetime, timedelta
+from threading import Lock
+from typing import Optional, Dict, Any
+
+from .models import (
+    ProgressStep,
+    StepStatus,
+    AnalysisResult,
+    AnalysisError,
+    ErrorCode
+)
+from .config import settings, PROGRESS_STEPS
+
+
+# Job state structure
+class JobState:
+    """Internal job state representation"""
+    
+    def __init__(self, job_id: str):
+        self.job_id = job_id
+        self.created_at = datetime.utcnow()
+        self.status = "running"  # running, completed, failed
+        self.progress: list[ProgressStep] = []
+        self.result: Optional[AnalysisResult] = None
+        self.error: Optional[AnalysisError] = None
+        
+        # Initialize progress steps
+        for step_name in PROGRESS_STEPS:
+            self.progress.append(
+                ProgressStep(
+                    name=step_name,
+                    status=StepStatus.pending
+                )
+            )
+        # Set first step as active
+        if self.progress:
+            self.progress[0].status = StepStatus.active
+
+
+# In-memory job store
+_jobs: Dict[str, JobState] = {}
+_jobs_lock = Lock()
+
+
+def create_job() -> str:
+    """
+    Create a new job and return its ID.
+    
+    Returns:
+        str: Unique job ID
+    """
+    job_id = str(uuid.uuid4())
+    
+    with _jobs_lock:
+        _jobs[job_id] = JobState(job_id)
+    
+    return job_id
+
+
+def get_job(job_id: str) -> Optional[JobState]:
+    """
+    Retrieve a job by ID.
+    
+    Args:
+        job_id: The job ID to retrieve
+        
+    Returns:
+        JobState if found, None otherwise
+    """
+    with _jobs_lock:
+        return _jobs.get(job_id)
+
+
+def update_job_progress(
+    job_id: str,
+    step_index: int,
+    status: StepStatus,
+    files_processed: Optional[int] = None,
+    files_total: Optional[int] = None,
+    current_file: Optional[str] = None
+) -> None:
+    """
+    Update progress for a specific step.
+    
+    Args:
+        job_id: The job ID
+        step_index: Index of the step to update (0-based)
+        status: New status for the step
+        files_processed: Optional number of files processed
+        files_total: Optional total number of files
+        current_file: Optional current file being processed
+    """
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+        if not job:
+            return
+        
+        if 0 <= step_index < len(job.progress):
+            step = job.progress[step_index]
+            step.status = status
+            
+            if files_processed is not None:
+                step.files_processed = files_processed
+            if files_total is not None:
+                step.files_total = files_total
+            if current_file is not None:
+                step.current_file = current_file
+            
+            # If marking as done, set next step as active
+            if status == StepStatus.done and step_index + 1 < len(job.progress):
+                job.progress[step_index + 1].status = StepStatus.active
+
+
+def set_job_result(job_id: str, result: AnalysisResult) -> None:
+    """
+    Set the final result for a job and mark it as completed.
+    
+    Args:
+        job_id: The job ID
+        result: The analysis result
+    """
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+        if not job:
+            return
+        
+        job.status = "completed"
+        job.result = result
+        
+        # Mark all steps as done
+        for step in job.progress:
+            step.status = StepStatus.done
+
+
+def set_job_error(job_id: str, error: AnalysisError) -> None:
+    """
+    Set an error for a job and mark it as failed.
+    
+    Args:
+        job_id: The job ID
+        error: The analysis error
+    """
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+        if not job:
+            return
+        
+        job.status = "failed"
+        job.error = error
+
+
+def cleanup_old_jobs() -> int:
+    """
+    Remove jobs older than the retention period.
+    
+    Returns:
+        int: Number of jobs removed
+    """
+    cutoff_time = datetime.utcnow() - timedelta(hours=settings.job_retention_hours)
+    removed_count = 0
+    
+    with _jobs_lock:
+        job_ids_to_remove = [
+            job_id for job_id, job in _jobs.items()
+            if job.created_at < cutoff_time
+        ]
+        
+        for job_id in job_ids_to_remove:
+            del _jobs[job_id]
+            removed_count += 1
+    
+    return removed_count
+
+
+def get_active_job_count() -> int:
+    """
+    Get the number of currently running jobs.
+    
+    Returns:
+        int: Number of active jobs
+    """
+    with _jobs_lock:
+        return sum(1 for job in _jobs.values() if job.status == "running")
+
+# Made with Bob

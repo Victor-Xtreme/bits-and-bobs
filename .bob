@@ -104,11 +104,32 @@ npm run install:all
 npm run build:extension
 ```
 
+## Project-Specific Rules
+
+### Data Models Reference
+**When working with data models, types, or API structures, ALWAYS refer to [`backend/src/models.py`](backend/src/models.py).**
+
+This file contains all Pydantic models including:
+- **Enums:** Severity, NodeType, EdgeRelationship, StepStatus, Effort, Grade, PayloadType, ErrorCode
+- **Request Models:** AnalyzeRequest
+- **Progress Tracking:** ProgressStep
+- **Parsed Codebase Models:** ParsedFunction, ParsedClass, ParsedFile, ParsedCodebase
+- **Architecture Graph:** GraphNode, GraphEdge, ArchitectureGraph
+- **Code Review:** CodeReviewFinding, CodeReview
+- **Documentation:** DocParam, DocEntry, TestCase, TestEntry, Documentation
+- **Security:** SecurityIssue, ModernizationItem, SecurityReport
+- **Health Score:** ScoreBreakdown, HealthScore
+- **Results:** AnalysisResult, AnalysisError
+- **API Response:** ApiResponse
+
+These models define the contract between backend components and the VS Code extension. Do not create duplicate models or modify these structures without reviewing the entire codebase impact.
+
 ## When in Doubt
 1. Check [`documentation/filetree.md`](documentation/filetree.md) first
 2. Review [`documentation/teamspec.md`](documentation/teamspec.md) for requirements
-3. Ask clarifying questions before making structural changes
-4. Export your Bob session when completing a feature
+3. Refer to [`backend/src/models.py`](backend/src/models.py) for all data structures
+4. Ask clarifying questions before making structural changes
+5. Export your Bob session when completing a feature
 
 ---
 
