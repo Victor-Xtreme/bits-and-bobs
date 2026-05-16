@@ -40,6 +40,37 @@ class Settings(BaseSettings):
     watsonx_url: str = "https://us-south.ml.cloud.ibm.com"
     watsonx_model_id: str = "meta-llama/llama-3-1-70b-instruct"
     
+    # WatsonX Orchestrate Configuration
+    orchestrate_api_key: str
+    orchestrate_url: str
+    orchestrate_agent_architect_id: str
+    orchestrate_agent_reviewer_id: str
+    orchestrate_agent_documenter_id: str
+    orchestrate_agent_hardener_id: str
+    
+    @field_validator('orchestrate_api_key')
+    @classmethod
+    def validate_orchestrate_api_key(cls, v: str) -> str:
+        """Validate that Orchestrate API key is not empty"""
+        if not v or len(v.strip()) < 10:
+            raise ValueError('orchestrate_api_key must be at least 10 characters long')
+        if v.strip() in ['your-api-key-here', 'placeholder', 'test', 'dummy']:
+            raise ValueError('orchestrate_api_key appears to be a placeholder value')
+        return v.strip()
+    
+    @field_validator('orchestrate_url')
+    @classmethod
+    def validate_orchestrate_url(cls, v: str) -> str:
+        """Validate that Orchestrate URL is not empty and looks like a URL"""
+        if not v or len(v.strip()) < 10:
+            raise ValueError('orchestrate_url must be a valid URL')
+        if not v.strip().startswith(('http://', 'https://')):
+            raise ValueError('orchestrate_url must start with http:// or https://')
+        return v.strip()
+    
+    orchestrate_timeout: int = Field(default=120, gt=0, le=3600)
+    orchestrate_model_id: str = "ibm/granite-3-8b-instruct"
+    
     # API Timeouts (in seconds)
     watsonx_timeout: int = Field(default=120, gt=0, le=3600)
     analysis_timeout: int = Field(default=600, gt=0, le=7200)

@@ -1,6 +1,6 @@
 """
 RepoSense WatsonX AI Integration
-Handles all interactions with IBM WatsonX API for AI-powered analysis
+Handles all interactions with IBM WatsonX Orchestrate for AI-powered analysis
 """
 
 import json
@@ -33,6 +33,7 @@ from .models import (
     Grade
 )
 from .config import settings
+from .orchestrate_client import get_orchestrate_client
 
 # Constants for AI analysis limits
 MAX_FILES_FOR_ARCHITECTURE = 20
@@ -165,7 +166,7 @@ def _parse_json_response(response: str) -> Dict[str, Any]:
 
 async def generate_architecture(parsed_codebase: ParsedCodebase) -> ArchitectureGraph:
     """
-    Generate architecture graph from parsed codebase.
+    Generate architecture graph from parsed codebase using Orchestrate ARCHITECT agent.
     
     Args:
         parsed_codebase: The parsed codebase
@@ -196,30 +197,11 @@ Codebase Summary:
 Import Graph (sample):
 {json.dumps(import_graph_sample, indent=2)}
 
-Generate a JSON response with the following structure:
-{{
-  "nodes": [
-    {{
-      "id": "unique_id",
-      "label": "Node Label",
-      "type": "entry|service|util|config|test",
-      "description": "Brief description"
-    }}
-  ],
-  "edges": [
-    {{
-      "source": "source_node_id",
-      "target": "target_node_id",
-      "relationship": "imports|extends|calls"
-    }}
-  ]
-}}
+Focus on the main architectural components and their relationships. Limit to {MAX_ARCHITECTURE_NODES} nodes maximum."""
 
-Focus on the main architectural components and their relationships. Limit to {MAX_ARCHITECTURE_NODES} nodes maximum.
-Return ONLY valid JSON, no additional text."""
-
-    response = await _call_watsonx(prompt)
-    data = _parse_json_response(response)
+    # Call Orchestrate ARCHITECT agent
+    client = get_orchestrate_client()
+    data = await client.call_architect_agent(prompt)
     
     # Parse nodes
     nodes = []
@@ -245,7 +227,7 @@ Return ONLY valid JSON, no additional text."""
 
 async def generate_review(parsed_codebase: ParsedCodebase) -> CodeReview:
     """
-    Generate code review findings from parsed codebase.
+    Generate code review findings from parsed codebase using Orchestrate REVIEWER agent.
     
     Args:
         parsed_codebase: The parsed codebase
@@ -269,30 +251,17 @@ async def generate_review(parsed_codebase: ParsedCodebase) -> CodeReview:
 Codebase Files (sample):
 {json.dumps(file_samples, indent=2)}
 
-Generate a JSON response with the following structure:
-{{
-  "findings": [
-    {{
-      "file": "path/to/file",
-      "line": 42,
-      "severity": "LOW|MEDIUM|HIGH|CRITICAL",
-      "issue": "Description of the issue",
-      "suggestion": "How to fix it"
-    }}
-  ]
-}}
-
 Focus on:
 - Missing documentation
 - Code complexity
 - Naming conventions
 - Best practices violations
 
-Limit to {MAX_REVIEW_FINDINGS} most important findings.
-Return ONLY valid JSON, no additional text."""
+Limit to {MAX_REVIEW_FINDINGS} most important findings."""
 
-    response = await _call_watsonx(prompt)
-    data = _parse_json_response(response)
+    # Call Orchestrate REVIEWER agent
+    client = get_orchestrate_client()
+    data = await client.call_reviewer_agent(prompt)
     
     findings = []
     for finding_data in data.get("findings", []):
@@ -309,7 +278,7 @@ Return ONLY valid JSON, no additional text."""
 
 async def generate_docs(parsed_codebase: ParsedCodebase) -> Documentation:
     """
-    Generate documentation for key functions.
+    Generate documentation for key functions using Orchestrate DOCUMENTER agent.
     
     Args:
         parsed_codebase: The parsed codebase
@@ -335,43 +304,11 @@ async def generate_docs(parsed_codebase: ParsedCodebase) -> Documentation:
     prompt = f"""Generate documentation for these functions.
 
 Functions:
-{json.dumps(undocumented, indent=2)}
+{json.dumps(undocumented, indent=2)}"""
 
-Generate a JSON response with the following structure:
-{{
-  "docs": [
-    {{
-      "function_name": "function_name",
-      "description": "What the function does",
-      "params": [
-        {{
-          "name": "param_name",
-          "type": "param_type",
-          "description": "param description"
-        }}
-      ],
-      "returns": "Return value description",
-      "example": "Usage example"
-    }}
-  ],
-  "tests": [
-    {{
-      "function_name": "function_name",
-      "test_cases": [
-        {{
-          "description": "Test case description",
-          "input": "Input values",
-          "expected": "Expected output"
-        }}
-      ]
-    }}
-  ]
-}}
-
-Return ONLY valid JSON, no additional text."""
-
-    response = await _call_watsonx(prompt)
-    data = _parse_json_response(response)
+    # Call Orchestrate DOCUMENTER agent
+    client = get_orchestrate_client()
+    data = await client.call_documenter_agent(prompt)
     
     # Parse docs
     from .models import DocParam, TestCase
@@ -417,7 +354,7 @@ Return ONLY valid JSON, no additional text."""
 
 async def generate_security(parsed_codebase: ParsedCodebase) -> SecurityReport:
     """
-    Generate security report with issues and modernization suggestions.
+    Generate security report with issues and modernization suggestions using Orchestrate HARDENER agent.
     
     Args:
         parsed_codebase: The parsed codebase
@@ -444,36 +381,17 @@ async def generate_security(parsed_codebase: ParsedCodebase) -> SecurityReport:
 Codebase Summary:
 {json.dumps(summary, indent=2)}
 
-Generate a JSON response with the following structure:
-{{
-  "security": [
-    {{
-      "issue": "Security issue description",
-      "severity": "LOW|MEDIUM|HIGH|CRITICAL",
-      "file": "path/to/file",
-      "fix": "How to fix it"
-    }}
-  ],
-  "modernization": [
-    {{
-      "pattern": "Outdated pattern found",
-      "suggestion": "Modern alternative",
-      "effort": "LOW|MEDIUM|HIGH"
-    }}
-  ]
-}}
-
 Focus on:
 - Vulnerable dependencies
 - Insecure patterns
 - Outdated practices
 - Missing security features
 
-Limit to {MAX_SECURITY_ISSUES} security issues and {MAX_MODERNIZATION_ITEMS} modernization items.
-Return ONLY valid JSON, no additional text."""
+Limit to {MAX_SECURITY_ISSUES} security issues and {MAX_MODERNIZATION_ITEMS} modernization items."""
 
-    response = await _call_watsonx(prompt)
-    data = _parse_json_response(response)
+    # Call Orchestrate HARDENER agent
+    client = get_orchestrate_client()
+    data = await client.call_hardener_agent(prompt)
     
     # Parse security issues
     security = []
