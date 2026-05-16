@@ -105,21 +105,32 @@
     
     <!-- Auto-load test data -->
     <script>
-        // Simulate VS Code API
+        // Simulate VS Code API BEFORE loading main.js
         window.acquireVsCodeApi = function() {
             return {
                 postMessage: function(msg) {
                     console.log('VS Code message:', msg);
+                },
+                getState: function() {
+                    return null;
+                },
+                setState: function(state) {
+                    console.log('State saved:', state);
                 }
             };
         };
         
+        // Set vscode variable for main.js
+        if (typeof vscode === 'undefined') {
+            window.vscode = acquireVsCodeApi();
+        }
+        
         // Auto-load sample data after page loads
         window.addEventListener('load', () => {
             setTimeout(() => {
-                window.postMessage({ 
-                    type: 'results', 
-                    data: sampleAnalysisData 
+                window.postMessage({
+                    type: 'results',
+                    data: sampleAnalysisData
                 }, '*');
             }, 500);
         });

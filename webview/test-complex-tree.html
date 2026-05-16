@@ -193,7 +193,7 @@
     
     <!-- Auto-load test data -->
     <script>
-        // Simulate VS Code API
+        // Simulate VS Code API BEFORE loading main.js
         window.acquireVsCodeApi = function() {
             return {
                 postMessage: function(msg) {
@@ -208,13 +208,18 @@
             };
         };
         
+        // Set vscode variable for main.js
+        if (typeof vscode === 'undefined') {
+            window.vscode = acquireVsCodeApi();
+        }
+        
         // Auto-load complex sample data after page loads
         window.addEventListener('load', () => {
             console.log('Loading complex test data...');
             setTimeout(() => {
-                window.postMessage({ 
-                    type: 'results', 
-                    data: complexAnalysisData 
+                window.postMessage({
+                    type: 'results',
+                    data: complexAnalysisData
                 }, '*');
             }, 500);
         });

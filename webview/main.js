@@ -1,5 +1,11 @@
-// Acquire VS Code API
-const vscode = acquireVsCodeApi();
+// Acquire VS Code API (will be mocked in standalone tests)
+let vscode;
+try {
+    vscode = acquireVsCodeApi();
+} catch (e) {
+    // Running in standalone mode, vscode will be set by test file
+    console.log('Running in standalone test mode');
+}
 
 // State management
 let currentPanel = 'health';
