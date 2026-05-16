@@ -102,7 +102,8 @@ class TestEnvFilePath:
         
         # Should be a Path object or absolute string
         assert env_file is not None
-        env_path = Path(env_file)
+        # Convert to string first to handle DotenvType properly
+        env_path = Path(str(env_file))
         assert env_path.is_absolute() or '..' in str(env_file)
 
 

@@ -234,6 +234,23 @@ def get_active_job_count() -> int:
         return sum(1 for job in _jobs.values() if job.status == JobStatus.RUNNING)
 
 
+def delete_job(job_id: str) -> bool:
+    """
+    Delete a job from the store.
+    
+    Args:
+        job_id: The job ID to delete
+        
+    Returns:
+        bool: True if job was found and deleted, False otherwise
+    """
+    with _jobs_lock:
+        if job_id in _jobs:
+            del _jobs[job_id]
+            return True
+        return False
+
+
 def get_job_status(job_id: str) -> Optional[ApiResponse]:
     """
     Get job status as API response.
