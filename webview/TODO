@@ -1,3 +1,4 @@
+We need a tree view for the architecture graph similar to how a dependancy tree would look
 Add more data for dummy testing 
 A document is required explaining how P4 should be connected to P5 properly. This should serve as a guide for P4 to connect to P5 properly without having any knowledge of how P4 should work
 Vise versa is also required for me (P5) to understand how P4 works and how to get the data from p5 and connect to p4 you can correct me at any point about this if you think there is something to add.
