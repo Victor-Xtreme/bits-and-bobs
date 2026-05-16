@@ -5,6 +5,7 @@ Handles all interactions with IBM WatsonX API for AI-powered analysis
 
 import json
 import asyncio
+import logging
 from typing import Any, Dict
 
 from ibm_watsonx_ai.foundation_models import Model
@@ -32,6 +33,20 @@ from .models import (
     Grade
 )
 from .config import settings
+
+# Constants for AI analysis limits
+MAX_FILES_FOR_ARCHITECTURE = 20
+MAX_IMPORTS_PER_FILE = 10
+MAX_FILES_FOR_REVIEW = 10
+MAX_UNDOCUMENTED_FUNCTIONS_FILES = 5
+MAX_FUNCTIONS_PER_FILE = 3
+MAX_SAMPLE_IMPORTS = 30
+MAX_ARCHITECTURE_NODES = 15
+MAX_REVIEW_FINDINGS = 10
+MAX_SECURITY_ISSUES = 8
+MAX_MODERNIZATION_ITEMS = 5
+
+logger = logging.getLogger(__name__)
 
 
 def _get_watsonx_model() -> Model:
@@ -76,7 +91,8 @@ async def _call_watsonx(prompt: str) -> str:
         
     Raises:
         TimeoutError: If the request times out
-        Exception: For other API errors
+        ValueError: For authentication or API errors
+        Exception: For other unexpected errors
     """
     model = _get_watsonx_model()
     
@@ -89,7 +105,20 @@ async def _call_watsonx(prompt: str) -> str:
         )
         return response
     except asyncio.TimeoutError:
+        logger.error("WatsonX API request timed out")
         raise TimeoutError("WatsonX API request timed out")
+    except ValueError as e:
+        # Authentication or API key errors
+        logger.error(f"WatsonX authentication error: {str(e)}")
+        raise ValueError(f"WatsonX authentication failed: {str(e)}")
+    except ConnectionError as e:
+        # Network connectivity issues
+        logger.error(f"WatsonX connection error: {str(e)}")
+        raise ConnectionError(f"Failed to connect to WatsonX: {str(e)}")
+    except Exception as e:
+        # Log unexpected errors with full context
+        logger.error(f"Unexpected WatsonX error: {str(e)}", exc_info=True)
+        raise
 
 
 def _parse_json_response(response: str) -> Dict[str, Any]:
@@ -135,14 +164,18 @@ async def generate_architecture(parsed_codebase: ParsedCodebase) -> Architecture
     """
     # Build a summary of the codebase
     file_summary = []
-    for file in parsed_codebase.files[:20]:  # Limit to first 20 files
+    for file in parsed_codebase.files[:MAX_FILES_FOR_ARCHITECTURE]:
         file_summary.append({
             "path": file.path,
             "language": file.language,
             "classes": [c.name for c in file.classes],
             "functions": [f.name for f in file.functions],
-            "imports": file.imports[:10]  # Limit imports
+            "imports": file.imports[:MAX_IMPORTS_PER_FILE]
         })
+    
+    # Safely handle empty or small import graphs
+    import_graph_items = list(parsed_codebase.import_graph.items())
+    import_graph_sample = dict(import_graph_items[:MAX_IMPORTS_PER_FILE]) if import_graph_items else {}
     
     prompt = f"""Analyze this codebase structure and generate an architecture graph.
 
@@ -150,7 +183,7 @@ Codebase Summary:
 {json.dumps(file_summary, indent=2)}
 
 Import Graph (sample):
-{json.dumps(dict(list(parsed_codebase.import_graph.items())[:10]), indent=2)}
+{json.dumps(import_graph_sample, indent=2)}
 
 Generate a JSON response with the following structure:
 {{
@@ -171,7 +204,7 @@ Generate a JSON response with the following structure:
   ]
 }}
 
-Focus on the main architectural components and their relationships. Limit to 15 nodes maximum.
+Focus on the main architectural components and their relationships. Limit to {MAX_ARCHITECTURE_NODES} nodes maximum.
 Return ONLY valid JSON, no additional text."""
 
     response = await _call_watsonx(prompt)
@@ -211,7 +244,7 @@ async def generate_review(parsed_codebase: ParsedCodebase) -> CodeReview:
     """
     # Sample files for review
     file_samples = []
-    for file in parsed_codebase.files[:10]:
+    for file in parsed_codebase.files[:MAX_FILES_FOR_REVIEW]:
         file_samples.append({
             "path": file.path,
             "language": file.language,
@@ -244,7 +277,7 @@ Focus on:
 - Naming conventions
 - Best practices violations
 
-Limit to 10 most important findings.
+Limit to {MAX_REVIEW_FINDINGS} most important findings.
 Return ONLY valid JSON, no additional text."""
 
     response = await _call_watsonx(prompt)
@@ -275,8 +308,8 @@ async def generate_docs(parsed_codebase: ParsedCodebase) -> Documentation:
     """
     # Collect undocumented functions
     undocumented = []
-    for file in parsed_codebase.files[:5]:
-        for func in file.functions[:3]:
+    for file in parsed_codebase.files[:MAX_UNDOCUMENTED_FUNCTIONS_FILES]:
+        for func in file.functions[:MAX_FUNCTIONS_PER_FILE]:
             if not func.docstring:
                 undocumented.append({
                     "function_name": func.name,
@@ -393,7 +426,7 @@ async def generate_security(parsed_codebase: ParsedCodebase) -> SecurityReport:
     for file in parsed_codebase.files:
         all_imports.extend(file.imports)
     
-    summary["sample_imports"] = list(set(all_imports))[:30]
+    summary["sample_imports"] = list(set(all_imports))[:MAX_SAMPLE_IMPORTS]
     
     prompt = f"""Analyze this codebase for security issues and modernization opportunities.
 
@@ -425,7 +458,7 @@ Focus on:
 - Outdated practices
 - Missing security features
 
-Limit to 8 security issues and 5 modernization items.
+Limit to {MAX_SECURITY_ISSUES} security issues and {MAX_MODERNIZATION_ITEMS} modernization items.
 Return ONLY valid JSON, no additional text."""
 
     response = await _call_watsonx(prompt)

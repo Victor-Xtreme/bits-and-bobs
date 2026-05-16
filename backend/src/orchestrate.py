@@ -4,7 +4,8 @@ Coordinates the entire analysis pipeline
 """
 
 import asyncio
-from typing import Optional
+import logging
+from typing import Optional, Callable, Any, Awaitable
 
 from .models import (
     AnalysisResult,
@@ -26,6 +27,71 @@ from .watsonx import (
     generate_score
 )
 
+logger = logging.getLogger(__name__)
+
+
+async def _run_stage_with_error_handling(
+    job_id: str,
+    step_index: int,
+    stage_name: str,
+    stage_func: Callable[..., Awaitable[Any]],
+    *args: Any,
+    **kwargs: Any
+) -> Optional[Any]:
+    """
+    Execute a stage with standardized error handling.
+    
+    Args:
+        job_id: The job ID for tracking
+        step_index: Index of the progress step
+        stage_name: Human-readable stage name for error messages
+        stage_func: Async function to execute
+        *args: Positional arguments for stage_func
+        **kwargs: Keyword arguments for stage_func
+        
+    Returns:
+        Result from stage_func, or None if error occurred
+        
+    Raises:
+        Sets job error and returns None on failure
+    """
+    update_job_progress(job_id, step_index, StepStatus.active)
+    
+    try:
+        result = await stage_func(*args, **kwargs)
+        update_job_progress(job_id, step_index, StepStatus.done)
+        return result
+        
+    except TimeoutError as e:
+        logger.error(f"{stage_name} timed out: {str(e)}")
+        error = AnalysisError(
+            code=ErrorCode.AGENT_TIMEOUT,
+            message=f"{stage_name} timed out",
+            stage=stage_name
+        )
+        set_job_error(job_id, error)
+        return None
+        
+    except ValueError as e:
+        logger.error(f"{stage_name} invalid JSON: {str(e)}")
+        error = AnalysisError(
+            code=ErrorCode.AGENT_INVALID_JSON,
+            message=f"Invalid JSON response: {str(e)}",
+            stage=stage_name
+        )
+        set_job_error(job_id, error)
+        return None
+        
+    except Exception as e:
+        logger.error(f"{stage_name} error: {str(e)}", exc_info=True)
+        error = AnalysisError(
+            code=ErrorCode.WATSONX_UNAVAILABLE,
+            message=f"WatsonX API error: {str(e)}",
+            stage=stage_name
+        )
+        set_job_error(job_id, error)
+        return None
+
 
 async def orchestrate_analysis(job_id: str, local_path: str) -> None:
     """
@@ -44,12 +110,13 @@ async def orchestrate_analysis(job_id: str, local_path: str) -> None:
         local_path: Path to the local codebase to analyze
     """
     try:
-        # Stage 0: Parse codebase
+        # Stage 0: Parse codebase (special handling for parse errors)
         update_job_progress(job_id, 0, StepStatus.active)
-        
         try:
             parsed_codebase = await parse_codebase(local_path, job_id)
+            update_job_progress(job_id, 0, StepStatus.done)
         except Exception as e:
+            logger.error(f"Failed to parse codebase: {str(e)}", exc_info=True)
             error = AnalysisError(
                 code=ErrorCode.PARSE_FAILED,
                 message=f"Failed to parse codebase: {str(e)}",
@@ -58,172 +125,49 @@ async def orchestrate_analysis(job_id: str, local_path: str) -> None:
             set_job_error(job_id, error)
             return
         
-        update_job_progress(job_id, 0, StepStatus.done)
-        
         # Stage 1: Generate architecture graph
-        update_job_progress(job_id, 1, StepStatus.active)
-        
-        try:
-            architecture = await generate_architecture(parsed_codebase)
-        except TimeoutError:
-            error = AnalysisError(
-                code=ErrorCode.AGENT_TIMEOUT,
-                message="Architecture generation timed out",
-                stage="Analyzing architecture"
-            )
-            set_job_error(job_id, error)
+        architecture = await _run_stage_with_error_handling(
+            job_id, 1, "Analyzing architecture",
+            generate_architecture, parsed_codebase
+        )
+        if architecture is None:
             return
-        except ValueError as e:
-            error = AnalysisError(
-                code=ErrorCode.AGENT_INVALID_JSON,
-                message=f"Invalid JSON response: {str(e)}",
-                stage="Analyzing architecture"
-            )
-            set_job_error(job_id, error)
-            return
-        except Exception as e:
-            error = AnalysisError(
-                code=ErrorCode.WATSONX_UNAVAILABLE,
-                message=f"WatsonX API error: {str(e)}",
-                stage="Analyzing architecture"
-            )
-            set_job_error(job_id, error)
-            return
-        
-        update_job_progress(job_id, 1, StepStatus.done)
         
         # Stage 2: Generate code review
-        update_job_progress(job_id, 2, StepStatus.active)
-        
-        try:
-            review = await generate_review(parsed_codebase)
-        except TimeoutError:
-            error = AnalysisError(
-                code=ErrorCode.AGENT_TIMEOUT,
-                message="Code review generation timed out",
-                stage="Reviewing code quality"
-            )
-            set_job_error(job_id, error)
+        review = await _run_stage_with_error_handling(
+            job_id, 2, "Reviewing code quality",
+            generate_review, parsed_codebase
+        )
+        if review is None:
             return
-        except ValueError as e:
-            error = AnalysisError(
-                code=ErrorCode.AGENT_INVALID_JSON,
-                message=f"Invalid JSON response: {str(e)}",
-                stage="Reviewing code quality"
-            )
-            set_job_error(job_id, error)
-            return
-        except Exception as e:
-            error = AnalysisError(
-                code=ErrorCode.WATSONX_UNAVAILABLE,
-                message=f"WatsonX API error: {str(e)}",
-                stage="Reviewing code quality"
-            )
-            set_job_error(job_id, error)
-            return
-        
-        update_job_progress(job_id, 2, StepStatus.done)
         
         # Stage 3: Generate documentation
-        update_job_progress(job_id, 3, StepStatus.active)
-        
-        try:
-            docs = await generate_docs(parsed_codebase)
-        except TimeoutError:
-            error = AnalysisError(
-                code=ErrorCode.AGENT_TIMEOUT,
-                message="Documentation generation timed out",
-                stage="Generating documentation"
-            )
-            set_job_error(job_id, error)
+        docs = await _run_stage_with_error_handling(
+            job_id, 3, "Generating documentation",
+            generate_docs, parsed_codebase
+        )
+        if docs is None:
             return
-        except ValueError as e:
-            error = AnalysisError(
-                code=ErrorCode.AGENT_INVALID_JSON,
-                message=f"Invalid JSON response: {str(e)}",
-                stage="Generating documentation"
-            )
-            set_job_error(job_id, error)
-            return
-        except Exception as e:
-            error = AnalysisError(
-                code=ErrorCode.WATSONX_UNAVAILABLE,
-                message=f"WatsonX API error: {str(e)}",
-                stage="Generating documentation"
-            )
-            set_job_error(job_id, error)
-            return
-        
-        update_job_progress(job_id, 3, StepStatus.done)
         
         # Stage 4: Generate security report
-        update_job_progress(job_id, 4, StepStatus.active)
-        
-        try:
-            security = await generate_security(parsed_codebase)
-        except TimeoutError:
-            error = AnalysisError(
-                code=ErrorCode.AGENT_TIMEOUT,
-                message="Security scan timed out",
-                stage="Scanning security"
-            )
-            set_job_error(job_id, error)
+        security = await _run_stage_with_error_handling(
+            job_id, 4, "Scanning security",
+            generate_security, parsed_codebase
+        )
+        if security is None:
             return
-        except ValueError as e:
-            error = AnalysisError(
-                code=ErrorCode.AGENT_INVALID_JSON,
-                message=f"Invalid JSON response: {str(e)}",
-                stage="Scanning security"
-            )
-            set_job_error(job_id, error)
-            return
-        except Exception as e:
-            error = AnalysisError(
-                code=ErrorCode.WATSONX_UNAVAILABLE,
-                message=f"WatsonX API error: {str(e)}",
-                stage="Scanning security"
-            )
-            set_job_error(job_id, error)
-            return
-        
-        update_job_progress(job_id, 4, StepStatus.done)
         
         # Stage 5: Compute health score
-        update_job_progress(job_id, 5, StepStatus.active)
-        
-        try:
-            score = await generate_score(
-                architecture=architecture,
-                review=review,
-                docs=docs,
-                security=security
-            )
-        except TimeoutError:
-            error = AnalysisError(
-                code=ErrorCode.AGENT_TIMEOUT,
-                message="Health score computation timed out",
-                stage="Computing health score"
-            )
-            set_job_error(job_id, error)
+        score = await _run_stage_with_error_handling(
+            job_id, 5, "Computing health score",
+            generate_score,
+            architecture=architecture,
+            review=review,
+            docs=docs,
+            security=security
+        )
+        if score is None:
             return
-        except ValueError as e:
-            error = AnalysisError(
-                code=ErrorCode.AGENT_INVALID_JSON,
-                message=f"Invalid JSON response: {str(e)}",
-                stage="Computing health score"
-            )
-            set_job_error(job_id, error)
-            return
-        except Exception as e:
-            error = AnalysisError(
-                code=ErrorCode.WATSONX_UNAVAILABLE,
-                message=f"WatsonX API error: {str(e)}",
-                stage="Computing health score"
-            )
-            set_job_error(job_id, error)
-            return
-        
-        update_job_progress(job_id, 5, StepStatus.done)
         
         # Compose final result
         result = AnalysisResult(
@@ -239,6 +183,7 @@ async def orchestrate_analysis(job_id: str, local_path: str) -> None:
         
     except Exception as e:
         # Catch-all for unexpected errors
+        logger.error(f"Unexpected error in orchestration: {str(e)}", exc_info=True)
         error = AnalysisError(
             code=ErrorCode.UNKNOWN,
             message=f"Unexpected error: {str(e)}",

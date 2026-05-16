@@ -43,6 +43,13 @@ class StepStatus(str, Enum):
     pending = "pending"
 
 
+class JobStatus(str, Enum):
+    """Status of an analysis job"""
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class Effort(str, Enum):
     """Effort level required for modernization items"""
     LOW = "LOW"

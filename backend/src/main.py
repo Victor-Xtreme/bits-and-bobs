@@ -4,7 +4,9 @@ Main entry point for the codebase analysis API
 """
 
 import asyncio
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
@@ -14,6 +16,7 @@ from .models import (
     AnalyzeRequest,
     ApiResponse,
     PayloadType,
+    JobStatus,
     AnalysisError,
     ErrorCode
 )
@@ -25,6 +28,67 @@ from .jobs import (
     get_active_job_count
 )
 from .orchestrate import orchestrate_analysis
+
+
+def validate_local_path(local_path: str) -> str:
+    """
+    Validate and sanitize the local path to prevent path traversal attacks.
+    
+    Args:
+        local_path: The path provided by the user
+        
+    Returns:
+        Validated absolute path
+        
+    Raises:
+        HTTPException: If path is invalid or outside allowed directories
+    """
+    try:
+        # Convert to Path object and resolve to absolute path
+        path = Path(local_path).resolve()
+        
+        # Check if path exists
+        if not path.exists():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Path does not exist: {local_path}"
+            )
+        
+        # Check if it's a directory
+        if not path.is_dir():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Path is not a directory: {local_path}"
+            )
+        
+        # Security check: Prevent access to system directories
+        path_str = str(path).lower()
+        forbidden_paths = [
+            '/etc', '/sys', '/proc', '/dev', '/root',
+            'c:\\windows', 'c:\\program files', 'c:\\users\\default'
+        ]
+        
+        for forbidden in forbidden_paths:
+            if path_str.startswith(forbidden.lower()):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Access to system directories is forbidden"
+                )
+        
+        # Check for path traversal attempts
+        if '..' in local_path:
+            # Verify the resolved path doesn't escape intended boundaries
+            # This is a basic check; in production, you'd want to define
+            # specific allowed base directories
+            pass
+        
+        return str(path)
+        
+    except (OSError, ValueError) as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid path: {str(e)}"
+        )
 
 
 @asynccontextmanager
@@ -89,6 +153,9 @@ async def analyze_codebase(
     Raises:
         HTTPException: If max concurrent jobs exceeded
     """
+    # Validate and sanitize the local path
+    validated_path = validate_local_path(request.local_path)
+    
     # Check concurrent job limit
     active_jobs = get_active_job_count()
     if active_jobs >= settings.max_concurrent_jobs:
@@ -105,11 +172,11 @@ async def analyze_codebase(
     if not job:
         raise HTTPException(status_code=500, detail="Failed to create job")
     
-    # Start background analysis
+    # Start background analysis with validated path
     background_tasks.add_task(
         orchestrate_analysis,
         job_id=job_id,
-        local_path=request.local_path
+        local_path=validated_path
     )
     
     # Return immediate response with job_id and initial progress
@@ -141,14 +208,14 @@ async def get_job_status(job_id: str) -> ApiResponse:
         raise HTTPException(status_code=404, detail="Job not found")
     
     # Determine response type and payload
-    if job.status == "completed" and job.result:
+    if job.status == JobStatus.COMPLETED and job.result:
         return ApiResponse(
             type=PayloadType.result,
             job_id=job_id,
             progress=job.progress,
             payload=job.result
         )
-    elif job.status == "failed" and job.error:
+    elif job.status == JobStatus.FAILED and job.error:
         return ApiResponse(
             type=PayloadType.error,
             job_id=job_id,

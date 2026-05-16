@@ -11,6 +11,7 @@ from typing import Optional, Dict, Any
 from .models import (
     ProgressStep,
     StepStatus,
+    JobStatus,
     AnalysisResult,
     AnalysisError,
     ErrorCode
@@ -25,10 +26,11 @@ class JobState:
     def __init__(self, job_id: str):
         self.job_id = job_id
         self.created_at = datetime.utcnow()
-        self.status = "running"  # running, completed, failed
+        self.status = JobStatus.RUNNING
         self.progress: list[ProgressStep] = []
         self.result: Optional[AnalysisResult] = None
         self.error: Optional[AnalysisError] = None
+        self._lock = Lock()  # Per-job lock for thread safety
         
         # Initialize progress steps
         for step_name in PROGRESS_STEPS:
@@ -86,7 +88,7 @@ def update_job_progress(
     current_file: Optional[str] = None
 ) -> None:
     """
-    Update progress for a specific step.
+    Update progress for a specific step with improved thread safety.
     
     Args:
         job_id: The job ID
@@ -101,6 +103,12 @@ def update_job_progress(
         if not job:
             return
         
+        # Check if job is still running before updating
+        if job.status != JobStatus.RUNNING:
+            return
+    
+    # Use per-job lock for finer-grained control
+    with job._lock:
         if 0 <= step_index < len(job.progress):
             step = job.progress[step_index]
             step.status = status
@@ -112,9 +120,11 @@ def update_job_progress(
             if current_file is not None:
                 step.current_file = current_file
             
-            # If marking as done, set next step as active
+            # If marking as done, set next step as active (only if still running)
             if status == StepStatus.done and step_index + 1 < len(job.progress):
-                job.progress[step_index + 1].status = StepStatus.active
+                next_step = job.progress[step_index + 1]
+                if next_step.status == StepStatus.pending:
+                    next_step.status = StepStatus.active
 
 
 def set_job_result(job_id: str, result: AnalysisResult) -> None:
@@ -129,8 +139,9 @@ def set_job_result(job_id: str, result: AnalysisResult) -> None:
         job = _jobs.get(job_id)
         if not job:
             return
-        
-        job.status = "completed"
+    
+    with job._lock:
+        job.status = JobStatus.COMPLETED
         job.result = result
         
         # Mark all steps as done
@@ -150,8 +161,9 @@ def set_job_error(job_id: str, error: AnalysisError) -> None:
         job = _jobs.get(job_id)
         if not job:
             return
-        
-        job.status = "failed"
+    
+    with job._lock:
+        job.status = JobStatus.FAILED
         job.error = error
 
 
@@ -186,6 +198,6 @@ def get_active_job_count() -> int:
         int: Number of active jobs
     """
     with _jobs_lock:
-        return sum(1 for job in _jobs.values() if job.status == "running")
+        return sum(1 for job in _jobs.values() if job.status == JobStatus.RUNNING)
 
 # Made with Bob

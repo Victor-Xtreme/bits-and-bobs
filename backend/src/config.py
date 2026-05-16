@@ -4,6 +4,7 @@ Handles environment variables and application settings
 """
 
 from typing import Optional
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +17,26 @@ class Settings(BaseSettings):
     # WatsonX API Configuration
     watsonx_api_key: str
     watsonx_project_id: str
+    
+    @field_validator('watsonx_api_key')
+    @classmethod
+    def validate_api_key(cls, v: str) -> str:
+        """Validate that API key is not empty and meets minimum requirements"""
+        if not v or len(v.strip()) < 10:
+            raise ValueError('watsonx_api_key must be at least 10 characters long')
+        if v.strip() in ['your-api-key-here', 'placeholder', 'test', 'dummy']:
+            raise ValueError('watsonx_api_key appears to be a placeholder value')
+        return v.strip()
+    
+    @field_validator('watsonx_project_id')
+    @classmethod
+    def validate_project_id(cls, v: str) -> str:
+        """Validate that project ID is not empty"""
+        if not v or len(v.strip()) < 5:
+            raise ValueError('watsonx_project_id must be at least 5 characters long')
+        if v.strip() in ['your-project-id', 'placeholder', 'test']:
+            raise ValueError('watsonx_project_id appears to be a placeholder value')
+        return v.strip()
     watsonx_url: str = "https://us-south.ml.cloud.ibm.com"
     watsonx_model_id: str = "meta-llama/llama-3-1-70b-instruct"
     

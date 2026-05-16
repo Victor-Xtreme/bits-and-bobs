@@ -5,6 +5,7 @@ Parses codebases into structured ParsedCodebase models
 
 import os
 import asyncio
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -17,6 +18,8 @@ from .models import (
 )
 from .config import settings
 from .jobs import update_job_progress
+
+logger = logging.getLogger(__name__)
 
 
 async def parse_codebase(local_path: str, job_id: Optional[str] = None) -> ParsedCodebase:
@@ -77,12 +80,25 @@ async def parse_codebase(local_path: str, job_id: Optional[str] = None) -> Parse
         
         filtered_files.append(file_path)
     
-    # Check if we have any files
+    # Check if we have any files after filtering
     if not filtered_files:
-        raise ValueError("No supported files found in codebase")
+        if all_files:
+            # Files were found but all filtered out
+            raise ValueError(
+                f"No supported files found in codebase. "
+                f"All {len(all_files)} files were filtered out (likely due to size limits or unsupported extensions). "
+                f"Max file size: {settings.max_file_size_mb}MB, "
+                f"Supported languages: {', '.join(supported_languages)}"
+            )
+        else:
+            raise ValueError("No files found in codebase directory")
     
     # Check max files limit
-    if len(filtered_files) > settings.max_files_per_analysis:
+    original_count = len(filtered_files)
+    if original_count > settings.max_files_per_analysis:
+        logger.warning(
+            f"Codebase has {original_count} files, limiting to {settings.max_files_per_analysis}"
+        )
         filtered_files = filtered_files[:settings.max_files_per_analysis]
     
     # Parse each file
@@ -151,8 +167,17 @@ async def parse_file(file_path: Path, base_path: Path) -> ParsedFile:
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
-    except Exception:
-        # If we can't read the file, return empty parsed file
+    except UnicodeDecodeError as e:
+        logger.warning(f"Failed to decode file {rel_path}: {str(e)}")
+        return ParsedFile(
+            path=rel_path,
+            language=language,
+            imports=[],
+            classes=[],
+            functions=[]
+        )
+    except Exception as e:
+        logger.error(f"Failed to read file {rel_path}: {str(e)}")
         return ParsedFile(
             path=rel_path,
             language=language,
