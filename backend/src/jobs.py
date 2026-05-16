@@ -6,7 +6,7 @@ Thread-safe in-memory job store for tracking analysis progress
 import uuid
 from datetime import datetime, timedelta, timezone
 from threading import Lock
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 from .models import (
     ProgressStep,
@@ -14,7 +14,9 @@ from .models import (
     JobStatus,
     AnalysisResult,
     AnalysisError,
-    ErrorCode
+    ErrorCode,
+    ApiResponse,
+    PayloadType
 )
 from .config import settings, PROGRESS_STEPS
 
@@ -27,7 +29,7 @@ class JobState:
         self.job_id = job_id
         self.created_at = datetime.now(timezone.utc)
         self.status = JobStatus.RUNNING
-        self.progress: list[ProgressStep] = []
+        self.progress: List[ProgressStep] = []
         self.result: Optional[AnalysisResult] = None
         self.error: Optional[AnalysisError] = None
         self._lock = Lock()  # Per-job lock for thread safety
@@ -232,20 +234,36 @@ def get_active_job_count() -> int:
         return sum(1 for job in _jobs.values() if job.status == JobStatus.RUNNING)
 
 
-def delete_job(job_id: str) -> bool:
+def get_job_status(job_id: str) -> Optional[ApiResponse]:
     """
-    Delete a job from the store.
+    Get job status as API response.
     
     Args:
-        job_id: The job ID to delete
+        job_id: The job ID
         
     Returns:
-        bool: True if job was deleted, False if job not found
+        ApiResponse if found, None otherwise
     """
-    with _jobs_lock:
-        if job_id not in _jobs:
-            return False
-        del _jobs[job_id]
-        return True
+    job = get_job(job_id)
+    if job is None:
+        return None
+    
+    # Determine payload type and content
+    if job.status == JobStatus.COMPLETED and job.result:
+        payload_type = PayloadType.result
+        payload = job.result
+    elif job.status == JobStatus.FAILED and job.error:
+        payload_type = PayloadType.error
+        payload = job.error
+    else:
+        payload_type = PayloadType.request
+        payload = None
+    
+    return ApiResponse(
+        type=payload_type,
+        job_id=job.job_id,
+        progress=job.progress,
+        payload=payload
+    )
 
 # Made with Bob

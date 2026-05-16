@@ -6,7 +6,7 @@ Handles all interactions with IBM WatsonX Orchestrate agents
 import json
 import asyncio
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 import httpx
 
 from .config import settings
@@ -224,7 +224,7 @@ class OrchestrateClient:
 
 
 # Global client instance
-_orchestrate_client: OrchestrateClient | None = None
+_orchestrate_client: Optional[OrchestrateClient] = None
 
 
 def get_orchestrate_client() -> OrchestrateClient:

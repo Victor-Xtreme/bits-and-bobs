@@ -4,6 +4,7 @@ Handles environment variables and application settings
 """
 
 from pathlib import Path
+from typing import List
 from pydantic import field_validator, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -47,7 +48,17 @@ class Settings(BaseSettings):
         return v.strip()
     watsonx_url: str = "https://us-south.ml.cloud.ibm.com"
     watsonx_model_id: str = "granite-3-8b-instruct"
-    
+
+    # WatsonX Orchestrate Configuration
+    orchestrate_api_key: str = ""
+    orchestrate_url: str = ""
+    orchestrate_timeout: int = Field(default=120, gt=0, le=3600)
+    orchestrate_model_id: str = "granite-3-8b-instruct"
+    orchestrate_agent_architect_id: str = ""
+    orchestrate_agent_reviewer_id: str = ""
+    orchestrate_agent_documenter_id: str = ""
+    orchestrate_agent_hardener_id: str = ""
+
     # API Timeouts (in seconds)
     watsonx_timeout: int = Field(default=120, gt=0, le=3600)
     analysis_timeout: int = Field(default=600, gt=0, le=7200)
@@ -57,7 +68,7 @@ class Settings(BaseSettings):
     max_files_per_analysis: int = Field(default=1000, gt=0, le=100000)
     
     # Supported Languages
-    supported_languages: str = "python,javascript,typescript,java,go,rust"
+    supported_languages: str = "py,js,ts,java,go,rs"
     
     # CORS Settings
     cors_origins: str = "http://localhost:3000,http://localhost:5173"
@@ -86,11 +97,11 @@ class Settings(BaseSettings):
         extra="ignore"
     )
     
-    def get_supported_languages_list(self) -> list[str]:
+    def get_supported_languages_list(self) -> List[str]:
         """Get supported languages as a list"""
         return [lang.strip() for lang in self.supported_languages.split(",") if lang.strip()]
     
-    def get_cors_origins_list(self) -> list[str]:
+    def get_cors_origins_list(self) -> List[str]:
         """Get CORS origins as a list"""
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
     
