@@ -58,6 +58,8 @@ class Settings(BaseSettings):
     orchestrate_agent_reviewer_id: str = ""
     orchestrate_agent_documenter_id: str = ""
     orchestrate_agent_hardener_id: str = ""
+    orchestrate_environment_id: str = ""
+    orchestrate_instance_id: str = ""
 
     # API Timeouts (in seconds)
     watsonx_timeout: int = Field(default=120, gt=0, le=3600)

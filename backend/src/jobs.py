@@ -237,12 +237,12 @@ def get_active_job_count() -> int:
 def delete_job(job_id: str) -> bool:
     """
     Delete a job from the store.
-    
+
     Args:
         job_id: The job ID to delete
-        
+
     Returns:
-        bool: True if job was found and deleted, False otherwise
+        bool: True if deleted, False if not found
     """
     with _jobs_lock:
         if job_id in _jobs:
