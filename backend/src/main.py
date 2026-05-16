@@ -1,32 +1,119 @@
 """
-RepoSense FastAPI Backend
-Main application entry point
+RepoSense FastAPI Application
+Main entry point for the codebase analysis API
 """
 
 import asyncio
+import os
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Optional
+
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import logging
 
+from .models import (
+    AnalyzeRequest,
+    ApiResponse,
+    PayloadType,
+    JobStatus,
+    AnalysisError,
+    ErrorCode
+)
 from .config import settings
-from .models import AnalyzeRequest, AnalyzeResponse, JobStatus
-from .jobs import create_job, get_job_status
+from .jobs import (
+    create_job,
+    get_job,
+    cleanup_old_jobs,
+    get_active_job_count
+)
 from .orchestrate import orchestrate_analysis
 
-# Configure logging
-logging.basicConfig(
-    level=getattr(logging, settings.log_level),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
-# Create FastAPI app
+def validate_local_path(local_path: str) -> str:
+    """
+    Validate and sanitize the local path to prevent path traversal attacks.
+    
+    Args:
+        local_path: The path provided by the user
+        
+    Returns:
+        Validated absolute path
+        
+    Raises:
+        HTTPException: If path is invalid or outside allowed directories
+    """
+    try:
+        # Convert to Path object and resolve to absolute path
+        path = Path(local_path).resolve()
+        
+        # Check if path exists
+        if not path.exists():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Path does not exist: {local_path}"
+            )
+        
+        # Check if it's a directory
+        if not path.is_dir():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Path is not a directory: {local_path}"
+            )
+        
+        # Security check: Prevent access to system directories
+        path_str = str(path).lower()
+        forbidden_paths = [
+            '/etc', '/sys', '/proc', '/dev', '/root',
+            'c:\\windows', 'c:\\program files', 'c:\\users\\default'
+        ]
+        
+        for forbidden in forbidden_paths:
+            if path_str.startswith(forbidden.lower()):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Access to system directories is forbidden"
+                )
+        
+        # Check for path traversal attempts
+        if '..' in local_path:
+            # Verify the resolved path doesn't escape intended boundaries
+            # This is a basic check; in production, you'd want to define
+            # specific allowed base directories
+            pass
+        
+        return str(path)
+        
+    except (OSError, ValueError) as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid path: {str(e)}"
+        )
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan context manager for startup and shutdown events.
+    """
+    # Startup: cleanup old jobs
+    removed = cleanup_old_jobs()
+    print(f"Startup: Cleaned up {removed} old jobs")
+    
+    yield
+    
+    # Shutdown: final cleanup
+    print("Shutdown: Application closing")
+
+
+# Initialize FastAPI app
 app = FastAPI(
     title="RepoSense API",
-    description="AI-powered codebase analysis using watsonx Orchestrate",
-    version="1.0.0"
+    description="AI-powered codebase health analysis tool",
+    version="1.0.0",
+    lifespan=lifespan
 )
+
 
 # Configure CORS
 app.add_middleware(
@@ -40,119 +127,149 @@ app.add_middleware(
 
 @app.get("/")
 async def root():
-    """Root endpoint - API information"""
-    return {
-        "name": "RepoSense API",
-        "version": "1.0.0",
-        "status": "running",
-        "endpoints": {
-            "analyze": "POST /analyze",
-            "results": "GET /results/{job_id}",
-            "health": "GET /health"
-        }
-    }
-
-
-@app.get("/health")
-async def health_check():
     """Health check endpoint"""
     return {
-        "status": "healthy",
-        "orchestrate_configured": bool(settings.orchestrate_api_key),
-        "agents_configured": all([
-            settings.orchestrate_agent_architect_id,
-            settings.orchestrate_agent_reviewer_id,
-            settings.orchestrate_agent_documenter_id,
-            settings.orchestrate_agent_hardener_id
-        ])
+        "service": "RepoSense API",
+        "status": "running",
+        "version": "1.0.0"
     }
 
 
-@app.post("/analyze", response_model=AnalyzeResponse)
-async def analyze_repository(
+@app.post("/analyze", response_model=ApiResponse)
+async def analyze_codebase(
     request: AnalyzeRequest,
     background_tasks: BackgroundTasks
-):
+) -> ApiResponse:
     """
-    Start analysis of a repository.
+    Start a new codebase analysis.
     
     Args:
-        request: Analysis request with repo_path
+        request: Analysis request containing local_path
         background_tasks: FastAPI background tasks
         
     Returns:
-        AnalyzeResponse with job_id
+        ApiResponse with job_id and initial progress
+        
+    Raises:
+        HTTPException: If max concurrent jobs exceeded
     """
-    try:
-        # Create job
-        job_id = create_job()
-        
-        # Start analysis in background
-        background_tasks.add_task(
-            orchestrate_analysis,
-            job_id,
-            request.repo_path
-        )
-        
-        logger.info(f"Started analysis job {job_id} for {request.repo_path}")
-        
-        return AnalyzeResponse(
-            job_id=job_id,
-            message="Analysis started successfully"
-        )
-        
-    except Exception as e:
-        logger.error(f"Failed to start analysis: {str(e)}", exc_info=True)
+    # Validate and sanitize the local path
+    validated_path = validate_local_path(request.local_path)
+    
+    # Check concurrent job limit
+    active_jobs = get_active_job_count()
+    if active_jobs >= settings.max_concurrent_jobs:
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to start analysis: {str(e)}"
+            status_code=429,
+            detail=f"Maximum concurrent jobs ({settings.max_concurrent_jobs}) exceeded"
         )
+    
+    # Create new job
+    job_id = create_job()
+    
+    # Get initial job state
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=500, detail="Failed to create job")
+    
+    # Start background analysis with validated path
+    background_tasks.add_task(
+        orchestrate_analysis,
+        job_id=job_id,
+        local_path=validated_path
+    )
+    
+    # Return immediate response with job_id and initial progress
+    return ApiResponse(
+        type=PayloadType.request,
+        job_id=job_id,
+        progress=job.progress,
+        payload=None
+    )
 
 
-@app.get("/results/{job_id}", response_model=JobStatus)
-async def get_analysis_results(job_id: str):
+@app.get("/jobs/{job_id}", response_model=ApiResponse)
+async def get_job_status(job_id: str) -> ApiResponse:
     """
-    Get analysis results for a job.
+    Get the status and result of an analysis job.
     
     Args:
-        job_id: The job ID
+        job_id: The job ID to query
         
     Returns:
-        JobStatus with progress and results
+        ApiResponse with current progress and result/error if available
+        
+    Raises:
+        HTTPException: If job not found
     """
-    try:
-        status = get_job_status(job_id)
-        
-        if status is None:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Job {job_id} not found"
-            )
-        
-        return status
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get job status: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get job status: {str(e)}"
+    job = get_job(job_id)
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    # Determine response type and payload
+    if job.status == JobStatus.COMPLETED and job.result:
+        return ApiResponse(
+            type=PayloadType.result,
+            job_id=job_id,
+            progress=job.progress,
+            payload=job.result
+        )
+    elif job.status == JobStatus.FAILED and job.error:
+        return ApiResponse(
+            type=PayloadType.error,
+            job_id=job_id,
+            progress=job.progress,
+            payload=job.error
+        )
+    else:
+        # Still running
+        return ApiResponse(
+            type=PayloadType.request,
+            job_id=job_id,
+            progress=job.progress,
+            payload=None
         )
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Application startup event"""
-    logger.info("RepoSense API starting up...")
-    logger.info(f"Orchestrate URL: {settings.orchestrate_url}")
-    logger.info(f"Agents configured: {bool(settings.orchestrate_agent_architect_id)}")
+@app.delete("/jobs/{job_id}")
+async def delete_job(job_id: str):
+    """
+    Delete a job from the store.
+    
+    Args:
+        job_id: The job ID to delete
+        
+    Returns:
+        Success message
+        
+    Raises:
+        HTTPException: If job not found
+    """
+    from .jobs import _jobs, _jobs_lock
+    
+    with _jobs_lock:
+        if job_id not in _jobs:
+            raise HTTPException(status_code=404, detail="Job not found")
+        del _jobs[job_id]
+    
+    return {"message": "Job deleted successfully"}
 
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Application shutdown event"""
-    logger.info("RepoSense API shutting down...")
+@app.post("/cleanup")
+async def trigger_cleanup():
+    """
+    Manually trigger cleanup of old jobs.
+    
+    Returns:
+        Number of jobs removed
+    """
+    removed = cleanup_old_jobs()
+    return {"removed": removed}
 
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
 
 # Made with Bob

@@ -1,17 +1,16 @@
-# Core Dependencies - Using versions compatible with Python 3.14
-fastapi
-uvicorn[standard]
+# Core Framework
+fastapi==0.104.1
+uvicorn[standard]==0.47.0
+pydantic==2.13.4
+pydantic-settings==2.14.1
+# IBM WatsonX AI
+ibm-watsonx-ai==1.5.11
 
-# Pydantic - Use newer version that supports Python 3.14
-pydantic
-pydantic-settings
+# HTTP Client
+httpx==0.28.1
 
-# HTTP Client for Orchestrate
-httpx
-asyncio
+# Environment Variables
+python-dotenv==1.2.2
 
-# IBM WatsonX AI - Optional, only if P3 needs direct watsonx.ai
-# Comment out if not needed
-ibm-watsonx-ai
-
-# Made with Bob
+# Async Support
+asyncio==4.0.0

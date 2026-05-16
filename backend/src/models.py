@@ -1,14 +1,25 @@
 """
-RepoSense Data Models
-Pydantic models for request/response validation and data structures
+RepoSense Pydantic Models
+AI-powered codebase health analysis tool for FastAPI backend
 """
 
 from enum import Enum
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from typing import Optional, Union
+from pydantic import BaseModel
 
 
-# Enums
+# ============================================================================
+# ENUMS
+# ============================================================================
+
+class Severity(str, Enum):
+    """Severity levels for issues and findings"""
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
+
+
 class NodeType(str, Enum):
     """Types of nodes in the architecture graph"""
     entry = "entry"
@@ -19,29 +30,35 @@ class NodeType(str, Enum):
 
 
 class EdgeRelationship(str, Enum):
-    """Types of relationships between nodes"""
+    """Types of relationships between nodes in the architecture graph"""
     imports = "imports"
     extends = "extends"
     calls = "calls"
 
 
-class Severity(str, Enum):
-    """Severity levels for issues"""
-    LOW = "LOW"
-    MEDIUM = "MEDIUM"
-    HIGH = "HIGH"
-    CRITICAL = "CRITICAL"
+class StepStatus(str, Enum):
+    """Status of a progress step"""
+    done = "done"
+    active = "active"
+    pending = "pending"
+
+
+class JobStatus(str, Enum):
+    """Status of an analysis job"""
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
 
 
 class Effort(str, Enum):
-    """Effort levels for modernization tasks"""
+    """Effort level required for modernization items"""
     LOW = "LOW"
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"
 
 
 class Grade(str, Enum):
-    """Health score grades"""
+    """Letter grades for health score"""
     A = "A"
     B = "B"
     C = "C"
@@ -49,11 +66,10 @@ class Grade(str, Enum):
     F = "F"
 
 
-class StepStatus(str, Enum):
-    """Status of analysis steps"""
-    pending = "pending"
-    active = "active"
-    done = "done"
+class PayloadType(str, Enum):
+    """Type of payload in API response"""
+    request = "request"
+    result = "result"
     error = "error"
 
 
@@ -63,49 +79,93 @@ class ErrorCode(str, Enum):
     AGENT_TIMEOUT = "AGENT_TIMEOUT"
     AGENT_INVALID_JSON = "AGENT_INVALID_JSON"
     WATSONX_UNAVAILABLE = "WATSONX_UNAVAILABLE"
-    ORCHESTRATE_UNAVAILABLE = "ORCHESTRATE_UNAVAILABLE"
     UNKNOWN = "UNKNOWN"
 
 
-# Parsed Codebase Models
-class FunctionInfo(BaseModel):
-    """Information about a function"""
+# ============================================================================
+# REQUEST MODELS
+# ============================================================================
+
+class AnalyzeRequest(BaseModel):
+    """Request to analyze a local codebase"""
+    local_path: str
+
+
+# ============================================================================
+# PROGRESS TRACKING
+# ============================================================================
+
+class ProgressStep(BaseModel):
+    """Individual step in the analysis progress"""
     name: str
-    params: List[str] = Field(default_factory=list)
-    docstring: Optional[str] = None
+    status: StepStatus
+    files_processed: Optional[int] = None
+    files_total: Optional[int] = None
+    current_file: Optional[str] = None
+
+
+# ============================================================================
+# PARSED CODEBASE MODELS
+# ============================================================================
+
+class ParsedFunction(BaseModel):
+    """
+    Flat representation of a function.
+    id follows pattern: file_path::name for top-level
+                       file_path::ClassName::method_name for nested
+    parent_id is None for top-level, references parent's id for nested
+    """
+    id: str
+    name: str
+    parent_id: Optional[str] = None
     line_start: int
     line_end: int
-
-
-class ClassInfo(BaseModel):
-    """Information about a class"""
-    name: str
-    methods: List[str] = Field(default_factory=list)
     docstring: Optional[str] = None
+    params: list[str]
+    returns: Optional[str] = None
+
+
+class ParsedClass(BaseModel):
+    """
+    Flat representation of a class.
+    id follows pattern: file_path::name for top-level
+                       file_path::ParentClass::NestedClass for nested
+    parent_id is None for top-level, references parent's id for nested
+    """
+    id: str
+    name: str
+    parent_id: Optional[str] = None
     line_start: int
     line_end: int
+    docstring: Optional[str] = None
+    bases: list[str]
 
 
-class FileInfo(BaseModel):
-    """Information about a parsed file"""
+class ParsedFile(BaseModel):
+    """
+    Parsed file containing flat lists of all classes and functions.
+    All nested items are flattened into these lists with proper id/parent_id.
+    """
     path: str
     language: str
-    classes: List[ClassInfo] = Field(default_factory=list)
-    functions: List[FunctionInfo] = Field(default_factory=list)
-    imports: List[str] = Field(default_factory=list)
-    line_count: int
+    imports: list[str]
+    classes: list[ParsedClass]
+    functions: list[ParsedFunction]
 
 
 class ParsedCodebase(BaseModel):
-    """Complete parsed codebase structure"""
-    files: List[FileInfo]
-    import_graph: Dict[str, List[str]] = Field(default_factory=dict)
-    total_files: int
-    total_lines: int
-    languages: List[str]
+    """
+    Complete parsed codebase with import graph.
+    import_graph maps file paths to lists of file paths they import.
+    """
+    files: list[ParsedFile]
+    import_graph: dict[str, list[str]]
 
 
-# Architecture Models
+# ============================================================================
+# ARCHITECTURE GRAPH
+# ============================================================================
+
 class GraphNode(BaseModel):
     """Node in the architecture graph"""
     id: str
@@ -115,21 +175,24 @@ class GraphNode(BaseModel):
 
 
 class GraphEdge(BaseModel):
-    """Edge in the architecture graph"""
+    """Edge connecting two nodes in the architecture graph"""
     source: str
     target: str
     relationship: EdgeRelationship
 
 
 class ArchitectureGraph(BaseModel):
-    """Architecture graph with nodes and edges"""
-    nodes: List[GraphNode]
-    edges: List[GraphEdge]
+    """Complete architecture graph with nodes and edges"""
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]
 
 
-# Code Review Models
+# ============================================================================
+# CODE REVIEW
+# ============================================================================
+
 class CodeReviewFinding(BaseModel):
-    """A code review finding"""
+    """Individual code review finding"""
     file: str
     line: int
     severity: Severity
@@ -138,23 +201,29 @@ class CodeReviewFinding(BaseModel):
 
 
 class CodeReview(BaseModel):
-    """Code review results"""
-    findings: List[CodeReviewFinding]
+    """Complete code review with all findings"""
+    findings: list[CodeReviewFinding]
 
 
-# Documentation Models
+# ============================================================================
+# DOCUMENTATION
+# ============================================================================
+
 class DocParam(BaseModel):
-    """Documentation parameter"""
+    """Parameter documentation"""
     name: str
     type: str
     description: str
 
 
 class DocEntry(BaseModel):
-    """Documentation entry for a function"""
+    """
+    Documentation entry for a function.
+    function_name references the function being documented.
+    """
     function_name: str
     description: str
-    params: List[DocParam]
+    params: list[DocParam]
     returns: str
     example: str
 
@@ -167,20 +236,26 @@ class TestCase(BaseModel):
 
 
 class TestEntry(BaseModel):
-    """Test entry for a function"""
+    """
+    Test entry for a function.
+    function_name references the function being tested.
+    """
     function_name: str
-    test_cases: List[TestCase]
+    test_cases: list[TestCase]
 
 
 class Documentation(BaseModel):
-    """Documentation and test generation results"""
-    docs: List[DocEntry]
-    tests: List[TestEntry]
+    """Complete documentation with doc entries and test entries"""
+    docs: list[DocEntry]
+    tests: list[TestEntry]
 
 
-# Security Models
+# ============================================================================
+# SECURITY
+# ============================================================================
+
 class SecurityIssue(BaseModel):
-    """A security issue"""
+    """Security issue found in the codebase"""
     issue: str
     severity: Severity
     file: str
@@ -188,39 +263,45 @@ class SecurityIssue(BaseModel):
 
 
 class ModernizationItem(BaseModel):
-    """A modernization suggestion"""
+    """Modernization suggestion for outdated patterns"""
     pattern: str
     suggestion: str
     effort: Effort
 
 
 class SecurityReport(BaseModel):
-    """Security and modernization report"""
-    security: List[SecurityIssue]
-    modernization: List[ModernizationItem]
+    """Complete security report with issues and modernization items"""
+    security: list[SecurityIssue]
+    modernization: list[ModernizationItem]
 
 
-# Health Score Models
+# ============================================================================
+# HEALTH SCORE
+# ============================================================================
+
 class ScoreBreakdown(BaseModel):
-    """Breakdown of health score by category"""
-    quality: int = Field(ge=0, le=100)
-    security: int = Field(ge=0, le=100)
-    documentation: int = Field(ge=0, le=100)
-    architecture: int = Field(ge=0, le=100)
+    """Breakdown of health score into four categories"""
+    quality: int
+    security: int
+    documentation: int
+    architecture: int
 
 
 class HealthScore(BaseModel):
-    """Overall health score"""
-    score: int = Field(ge=0, le=100)
+    """Overall health score with breakdown and recommendations"""
+    score: int
     grade: Grade
     breakdown: ScoreBreakdown
     summary: str
-    top_priorities: List[str]
+    top_priorities: list[str]
 
 
-# Analysis Result Models
+# ============================================================================
+# FINAL RESULT
+# ============================================================================
+
 class AnalysisResult(BaseModel):
-    """Complete analysis result"""
+    """Complete analysis result composing all sub-reports"""
     score: HealthScore
     architecture: ArchitectureGraph
     review: CodeReview
@@ -228,38 +309,29 @@ class AnalysisResult(BaseModel):
     security: SecurityReport
 
 
+# ============================================================================
+# ERROR HANDLING
+# ============================================================================
+
 class AnalysisError(BaseModel):
-    """Analysis error information"""
+    """Error that occurred during analysis"""
     code: ErrorCode
     message: str
     stage: str
 
 
-# API Request/Response Models
-class AnalyzeRequest(BaseModel):
-    """Request to analyze a repository"""
-    repo_path: str = Field(..., description="Path to the local repository")
+# ============================================================================
+# UNIVERSAL API RESPONSE ENVELOPE
+# ============================================================================
 
-
-class ProgressStep(BaseModel):
-    """Progress step information"""
-    name: str
-    status: StepStatus
-
-
-class JobStatus(BaseModel):
-    """Job status information"""
+class ApiResponse(BaseModel):
+    """
+    Universal envelope for all API responses.
+    payload can be either AnalysisResult or AnalysisError.
+    """
+    type: PayloadType
     job_id: str
-    status: str
-    progress: List[ProgressStep]
-    result: Optional[AnalysisResult] = None
-    error: Optional[AnalysisError] = None
-
-
-class AnalyzeResponse(BaseModel):
-    """Response from analyze endpoint"""
-    job_id: str
-    message: str
-
+    progress: list[ProgressStep]
+    payload: Optional[Union[AnalysisResult, AnalysisError]] = None
 
 # Made with Bob
