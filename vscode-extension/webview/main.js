@@ -1,141 +1,19 @@
-// Acquire VS Code API (will be mocked in standalone tests)
-let vscode;
-try {
-    vscode = acquireVsCodeApi();
-} catch (e) {
-    // Running in standalone mode, vscode will be set by test file
-    console.log('Running in standalone test mode');
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
-// State management
-let currentPanel = 'health';
-let analysisData = null;
-let currentFilter = 'all';
-let currentDocsTab = 'docs';
-let graphRendered = false; // Track if architecture graph has been rendered
-
-// Initialize on load
-document.addEventListener('DOMContentLoaded', () => {
-    initializeEventListeners();
-    showLoadingState();
-});
-
-// Message listener from extension
-window.addEventListener('message', event => {
-    const msg = event.data;
-    console.log('Received message:', msg.type);
-    
-    switch (msg.type) {
-        case 'loading':
-            showLoadingState(msg.step);
-            break;
-        case 'progress':
-            updateProgress(msg.data);
-            break;
-        case 'results':
-            analysisData = msg.data;
-            showResults(msg.data);
-            break;
-        case 'error':
-            showError(msg.message);
-            break;
-    }
-});
-
-// Initialize event listeners
-function initializeEventListeners() {
-    // Tab navigation
-    document.querySelectorAll('.tab-button').forEach(button => {
-        button.addEventListener('click', () => {
-            const panel = button.dataset.panel;
-            switchPanel(panel);
-        });
+function copyToClipboard(button) {
+    const code = button.previousElementSibling.textContent;
+    navigator.clipboard.writeText(code).then(() => {
+        button.textContent = 'Copied!';
+        setTimeout(() => {
+            button.textContent = 'Copy';
+        }, 2000);
     });
-    
-    // Retry button
-    const retryButton = document.getElementById('retryButton');
-    if (retryButton) {
-        retryButton.addEventListener('click', () => {
-            vscode.postMessage({ type: 'retry' });
-            showLoadingState();
-        });
-    }
-    
-    // Filter buttons
-    document.querySelectorAll('.filter-button').forEach(button => {
-        button.addEventListener('click', () => {
-            currentFilter = button.dataset.filter;
-            document.querySelectorAll('.filter-button').forEach(b => b.classList.remove('active'));
-            button.classList.add('active');
-            if (analysisData) {
-                renderReviewPanel(analysisData.review);
-            }
-        });
-    });
-    
-    // Docs tabs
-    document.querySelectorAll('.docs-tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-            currentDocsTab = tab.dataset.tab;
-            document.querySelectorAll('.docs-tab').forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-            
-            document.getElementById('docsContent').classList.toggle('hidden', currentDocsTab !== 'docs');
-            document.getElementById('testsContent').classList.toggle('hidden', currentDocsTab !== 'tests');
-        });
-    });
-    
-    // Graph controls
-    const zoomIn = document.getElementById('zoomIn');
-    const zoomOut = document.getElementById('zoomOut');
-    const resetZoom = document.getElementById('resetZoom');
-    const depthSlider = document.getElementById('depthSlider');
-    const depthValue = document.getElementById('depthValue');
-    const networkView = document.getElementById('networkView');
-    const treeView = document.getElementById('treeView');
-    
-    if (zoomIn) zoomIn.addEventListener('click', () => zoomGraph(1.2));
-    if (zoomOut) zoomOut.addEventListener('click', () => zoomGraph(0.8));
-    if (resetZoom) resetZoom.addEventListener('click', () => resetGraphZoom());
-    
-    if (depthSlider && depthValue) {
-        depthSlider.addEventListener('input', (e) => {
-            const newDepth = parseInt(e.target.value);
-            depthValue.textContent = newDepth;
-            currentDepth = newDepth;
-            if (currentArchitecture && currentSelectedNode && currentGraphView === 'tree') {
-                renderDependencyTree(currentSelectedNode, currentDepth);
-            }
-        });
-    }
-    
-    // View toggle buttons
-    if (networkView) {
-        networkView.addEventListener('click', () => {
-            currentGraphView = 'network';
-            networkView.classList.add('active');
-            treeView.classList.remove('active');
-            document.getElementById('depthControl').style.display = 'none';
-            if (currentArchitecture) {
-                renderNetworkGraph(currentArchitecture);
-            }
-        });
-    }
-    
-    if (treeView) {
-        treeView.addEventListener('click', () => {
-            currentGraphView = 'tree';
-            treeView.classList.add('active');
-            networkView.classList.remove('active');
-            document.getElementById('depthControl').style.display = 'flex';
-            if (currentArchitecture && currentSelectedNode) {
-                renderDependencyTree(currentSelectedNode, currentDepth);
-            }
-        });
-    }
 }
-
-// Show loading state
+window.copyToClipboard = copyToClipboard;
 function showLoadingState(step = 'Initializing...') {
     hideAllStates();
     const loadingState = document.getElementById('loadingState');
@@ -147,7 +25,6 @@ function showLoadingState(step = 'Initializing...') {
     }
 }
 
-// Update progress
 function updateProgress(data) {
     const progressFill = document.getElementById('progressFill');
     if (progressFill && data.percentage !== undefined) {
@@ -162,7 +39,6 @@ function updateProgress(data) {
     }
 }
 
-// Show error state
 function showError(message) {
     hideAllStates();
     const errorState = document.getElementById('errorState');
@@ -174,7 +50,6 @@ function showError(message) {
     }
 }
 
-// Show results
 function showResults(data) {
     hideAllStates();
     
@@ -195,13 +70,27 @@ function showResults(data) {
     switchPanel('health');
 }
 
-// Hide all state panels
 function hideAllStates() {
     document.getElementById('loadingState').classList.add('hidden');
     document.getElementById('errorState').classList.add('hidden');
 }
 
-// Switch between panels
+function updateBadges(data) {
+    const reviewBadge = document.getElementById('reviewBadge');
+    const securityBadge = document.getElementById('securityBadge');
+    
+    if (reviewBadge && data.review && data.review.findings) {
+        const count = data.review.findings.length;
+        reviewBadge.textContent = count > 0 ? count : '';
+        reviewBadge.style.display = count > 0 ? 'inline-block' : 'none';
+    }
+    
+    if (securityBadge && data.security && data.security.issues) {
+        const count = data.security.issues.length;
+        securityBadge.textContent = count > 0 ? count : '';
+        securityBadge.style.display = count > 0 ? 'inline-block' : 'none';
+    }
+}
 function switchPanel(panelName) {
     currentPanel = panelName;
     
@@ -229,26 +118,6 @@ function switchPanel(panelName) {
         }
     }
 }
-
-// Update badge counts
-function updateBadges(data) {
-    const reviewBadge = document.getElementById('reviewBadge');
-    const securityBadge = document.getElementById('securityBadge');
-    
-    if (reviewBadge && data.review && data.review.findings) {
-        const count = data.review.findings.length;
-        reviewBadge.textContent = count > 0 ? count : '';
-        reviewBadge.style.display = count > 0 ? 'inline-block' : 'none';
-    }
-    
-    if (securityBadge && data.security && data.security.issues) {
-        const count = data.security.issues.length;
-        securityBadge.textContent = count > 0 ? count : '';
-        securityBadge.style.display = count > 0 ? 'inline-block' : 'none';
-    }
-}
-
-// Render Health Panel
 function renderHealthPanel(health) {
     if (!health) return;
     
@@ -292,7 +161,6 @@ function renderHealthPanel(health) {
     }
 }
 
-// Animate score number
 function animateScore(start, end, duration, element) {
     const startTime = performance.now();
     
@@ -313,9 +181,152 @@ function animateScore(start, end, duration, element) {
     
     requestAnimationFrame(update);
 }
-
-// Render Architecture Panel - Support both Network and Tree views
-let currentArchitecture = null;
+function renderReviewPanel(review) {
+    if (!review || !review.findings) return;
+    
+    const findingsList = document.getElementById('findingsList');
+    const emptyReview = document.getElementById('emptyReview');
+    
+    // Filter findings
+    let filteredFindings = review.findings;
+    if (currentFilter === 'high') {
+        filteredFindings = review.findings.filter(f => 
+            f.severity === 'HIGH' || f.severity === 'CRITICAL'
+        );
+    } else if (currentFilter === 'critical') {
+        filteredFindings = review.findings.filter(f => f.severity === 'CRITICAL');
+    }
+    
+    if (filteredFindings.length === 0) {
+        findingsList.innerHTML = '';
+        emptyReview.classList.remove('hidden');
+        return;
+    }
+    
+    emptyReview.classList.add('hidden');
+    
+    // Sort by severity
+    const severityOrder = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+    filteredFindings.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+    
+    findingsList.innerHTML = '';
+    filteredFindings.forEach(finding => {
+        const item = document.createElement('div');
+        item.className = `finding-item ${finding.severity.toLowerCase()}`;
+        
+        item.innerHTML = `
+            <div class="finding-header">
+                <span class="severity-badge ${finding.severity.toLowerCase()}">${finding.severity}</span>
+                <span class="finding-location">${finding.file}:${finding.line}</span>
+            </div>
+            <div class="finding-description">${finding.message}</div>
+            <div class="finding-details">
+                <strong>Suggestion:</strong>
+                <p>${finding.suggestion || 'No suggestion available'}</p>
+            </div>
+        `;
+        
+        item.addEventListener('click', () => {
+            item.classList.toggle('expanded');
+        });
+        
+        findingsList.appendChild(item);
+    });
+}
+function renderDocsPanel(documentation) {
+    if (!documentation) return;
+    
+    const docsContent = document.getElementById('docsContent');
+    const testsContent = document.getElementById('testsContent');
+    
+    // Render documentation
+    if (documentation.functions && documentation.functions.length > 0) {
+        docsContent.innerHTML = '';
+        documentation.functions.forEach(func => {
+            const item = document.createElement('div');
+            item.className = 'doc-item';
+            
+            item.innerHTML = `
+                <h4>${func.name}</h4>
+                <p>${func.description}</p>
+                ${func.params ? `<p><strong>Parameters:</strong> ${func.params}</p>` : ''}
+                ${func.returns ? `<p><strong>Returns:</strong> ${func.returns}</p>` : ''}
+                ${func.example ? `<pre><code>${escapeHtml(func.example)}</code></pre>` : ''}
+            `;
+            
+            docsContent.appendChild(item);
+        });
+    }
+    
+    // Render test stubs
+    if (documentation.tests && documentation.tests.length > 0) {
+        testsContent.innerHTML = '';
+        documentation.tests.forEach(test => {
+            const item = document.createElement('div');
+            item.className = 'doc-item';
+            
+            item.innerHTML = `
+                <h4>${test.name}</h4>
+                <pre><code>${escapeHtml(test.code)}</code><button class="copy-button" onclick="copyToClipboard(this)">Copy</button></pre>
+            `;
+            
+            testsContent.appendChild(item);
+        });
+    }
+}
+function renderSecurityPanel(security) {
+    if (!security) return;
+    
+    const securityIssues = document.getElementById('securityIssues');
+    const emptySecurityIssues = document.getElementById('emptySecurityIssues');
+    const modernizationList = document.getElementById('modernizationList');
+    
+    // Render security issues
+    if (security.issues && security.issues.length > 0) {
+        emptySecurityIssues.classList.add('hidden');
+        securityIssues.innerHTML = '';
+        
+        security.issues.forEach((issue, index) => {
+            const item = document.createElement('div');
+            item.className = 'security-item';
+            if (index === 0) item.classList.add('fix-first');
+            
+            item.innerHTML = `
+                <div class="security-item-header">
+                    ${index === 0 ? '<span style="color: var(--rs-red); font-weight: 600;">⚠️ Fix This First</span>' : ''}
+                    <span class="effort-badge ${issue.effort.toLowerCase()}">${issue.effort}</span>
+                </div>
+                <p><strong>${issue.title}</strong></p>
+                <p style="margin-top: 8px; color: var(--vscode-descriptionForeground);">${issue.description}</p>
+            `;
+            
+            securityIssues.appendChild(item);
+        });
+    } else {
+        emptySecurityIssues.classList.remove('hidden');
+        securityIssues.innerHTML = '';
+    }
+    
+    // Render modernization
+    if (security.modernization && security.modernization.length > 0) {
+        modernizationList.innerHTML = '';
+        
+        security.modernization.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'security-item';
+            
+            div.innerHTML = `
+                <div class="security-item-header">
+                    <span class="effort-badge ${item.effort.toLowerCase()}">${item.effort}</span>
+                </div>
+                <p><strong>${item.title}</strong></p>
+                <p style="margin-top: 8px; color: var(--vscode-descriptionForeground);">${item.description}</p>
+            `;
+            
+            modernizationList.appendChild(div);
+        });
+    }
+}
 let currentSelectedNode = null;
 let currentDepth = 1;
 let currentGraphView = 'tree'; // 'network' or 'tree'
@@ -372,8 +383,6 @@ function renderArchitecturePanel(architecture) {
     }
 }
 
-
-// Build subgraph for selected node
 function buildSubgraph(nodeId, allNodes, allEdges, depth) {
     const visited = new Set([nodeId]);
     const dependents = [];
@@ -423,7 +432,6 @@ function buildSubgraph(nodeId, allNodes, allEdges, depth) {
     };
 }
 
-// Render the dependency tree
 function renderDependencyTree(nodeId, depth) {
     if (graphSimulation) graphSimulation.stop();
     const container = document.getElementById('graphContainer');
@@ -623,7 +631,6 @@ function renderDependencyTree(nodeId, depth) {
     });
 }
 
-// Graph zoom controls
 function zoomGraph(factor) {
     const container = document.getElementById('graphContainer');
     if (container._svg && container._zoom) {
@@ -644,180 +651,6 @@ function resetGraphZoom() {
     }
 }
 
-// Render Review Panel
-function renderReviewPanel(review) {
-    if (!review || !review.findings) return;
-    
-    const findingsList = document.getElementById('findingsList');
-    const emptyReview = document.getElementById('emptyReview');
-    
-    // Filter findings
-    let filteredFindings = review.findings;
-    if (currentFilter === 'high') {
-        filteredFindings = review.findings.filter(f => 
-            f.severity === 'HIGH' || f.severity === 'CRITICAL'
-        );
-    } else if (currentFilter === 'critical') {
-        filteredFindings = review.findings.filter(f => f.severity === 'CRITICAL');
-    }
-    
-    if (filteredFindings.length === 0) {
-        findingsList.innerHTML = '';
-        emptyReview.classList.remove('hidden');
-        return;
-    }
-    
-    emptyReview.classList.add('hidden');
-    
-    // Sort by severity
-    const severityOrder = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
-    filteredFindings.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
-    
-    findingsList.innerHTML = '';
-    filteredFindings.forEach(finding => {
-        const item = document.createElement('div');
-        item.className = `finding-item ${finding.severity.toLowerCase()}`;
-        
-        item.innerHTML = `
-            <div class="finding-header">
-                <span class="severity-badge ${finding.severity.toLowerCase()}">${finding.severity}</span>
-                <span class="finding-location">${finding.file}:${finding.line}</span>
-            </div>
-            <div class="finding-description">${finding.message}</div>
-            <div class="finding-details">
-                <strong>Suggestion:</strong>
-                <p>${finding.suggestion || 'No suggestion available'}</p>
-            </div>
-        `;
-        
-        item.addEventListener('click', () => {
-            item.classList.toggle('expanded');
-        });
-        
-        findingsList.appendChild(item);
-    });
-}
-
-// Render Docs Panel
-function renderDocsPanel(documentation) {
-    if (!documentation) return;
-    
-    const docsContent = document.getElementById('docsContent');
-    const testsContent = document.getElementById('testsContent');
-    
-    // Render documentation
-    if (documentation.functions && documentation.functions.length > 0) {
-        docsContent.innerHTML = '';
-        documentation.functions.forEach(func => {
-            const item = document.createElement('div');
-            item.className = 'doc-item';
-            
-            item.innerHTML = `
-                <h4>${func.name}</h4>
-                <p>${func.description}</p>
-                ${func.params ? `<p><strong>Parameters:</strong> ${func.params}</p>` : ''}
-                ${func.returns ? `<p><strong>Returns:</strong> ${func.returns}</p>` : ''}
-                ${func.example ? `<pre><code>${escapeHtml(func.example)}</code></pre>` : ''}
-            `;
-            
-            docsContent.appendChild(item);
-        });
-    }
-    
-    // Render test stubs
-    if (documentation.tests && documentation.tests.length > 0) {
-        testsContent.innerHTML = '';
-        documentation.tests.forEach(test => {
-            const item = document.createElement('div');
-            item.className = 'doc-item';
-            
-            item.innerHTML = `
-                <h4>${test.name}</h4>
-                <pre><code>${escapeHtml(test.code)}</code><button class="copy-button" onclick="copyToClipboard(this)">Copy</button></pre>
-            `;
-            
-            testsContent.appendChild(item);
-        });
-    }
-}
-
-// Render Security Panel
-function renderSecurityPanel(security) {
-    if (!security) return;
-    
-    const securityIssues = document.getElementById('securityIssues');
-    const emptySecurityIssues = document.getElementById('emptySecurityIssues');
-    const modernizationList = document.getElementById('modernizationList');
-    
-    // Render security issues
-    if (security.issues && security.issues.length > 0) {
-        emptySecurityIssues.classList.add('hidden');
-        securityIssues.innerHTML = '';
-        
-        security.issues.forEach((issue, index) => {
-            const item = document.createElement('div');
-            item.className = 'security-item';
-            if (index === 0) item.classList.add('fix-first');
-            
-            item.innerHTML = `
-                <div class="security-item-header">
-                    ${index === 0 ? '<span style="color: var(--rs-red); font-weight: 600;">⚠️ Fix This First</span>' : ''}
-                    <span class="effort-badge ${issue.effort.toLowerCase()}">${issue.effort}</span>
-                </div>
-                <p><strong>${issue.title}</strong></p>
-                <p style="margin-top: 8px; color: var(--vscode-descriptionForeground);">${issue.description}</p>
-            `;
-            
-            securityIssues.appendChild(item);
-        });
-    } else {
-        emptySecurityIssues.classList.remove('hidden');
-        securityIssues.innerHTML = '';
-    }
-    
-    // Render modernization
-    if (security.modernization && security.modernization.length > 0) {
-        modernizationList.innerHTML = '';
-        
-        security.modernization.forEach(item => {
-            const div = document.createElement('div');
-            div.className = 'security-item';
-            
-            div.innerHTML = `
-                <div class="security-item-header">
-                    <span class="effort-badge ${item.effort.toLowerCase()}">${item.effort}</span>
-                </div>
-                <p><strong>${item.title}</strong></p>
-                <p style="margin-top: 8px; color: var(--vscode-descriptionForeground);">${item.description}</p>
-            `;
-            
-            modernizationList.appendChild(div);
-        });
-    }
-}
-
-// Utility functions
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-function copyToClipboard(button) {
-    const code = button.previousElementSibling.textContent;
-    navigator.clipboard.writeText(code).then(() => {
-        button.textContent = 'Copied!';
-        setTimeout(() => {
-            button.textContent = 'Copy';
-        }, 2000);
-    });
-}
-
-// Export for inline handlers
-window.copyToClipboard = copyToClipboard;
-
-// Made with Bob
-// Render Network Graph (Original force-directed layout from f3fe30d)
 function renderNetworkGraph(architecture) {
     if (graphSimulation) {
         graphSimulation.stop();
@@ -958,3 +791,204 @@ function renderNetworkGraph(architecture) {
         d.fy = null;
     }
 }
+// Acquire VS Code API (will be mocked in standalone tests)
+let vscode;
+try {
+    vscode = acquireVsCodeApi();
+} catch (e) {
+    // Running in standalone mode, vscode will be set by test file
+    console.log('Running in standalone test mode');
+}
+
+// State management
+let currentPanel = 'health';
+let analysisData = null;
+let currentFilter = 'all';
+let currentDocsTab = 'docs';
+let graphRendered = false; // Track if architecture graph has been rendered
+
+// Initialize on load
+document.addEventListener('DOMContentLoaded', () => {
+    initializeEventListeners();
+    showLoadingState();
+});
+
+// Message listener from extension
+window.addEventListener('message', event => {
+    const msg = event.data;
+    console.log('Received message:', msg.type);
+    
+    switch (msg.type) {
+        case 'loading':
+            showLoadingState(msg.step);
+            break;
+        case 'progress':
+            updateProgress(msg.data);
+            break;
+        case 'results':
+            analysisData = msg.data;
+            showResults(msg.data);
+            break;
+        case 'error':
+            showError(msg.message);
+            break;
+    }
+});
+
+// Initialize event listeners
+function initializeEventListeners() {
+    // Tab navigation
+    document.querySelectorAll('.tab-button').forEach(button => {
+        button.addEventListener('click', () => {
+            const panel = button.dataset.panel;
+            switchPanel(panel);
+        });
+    });
+    
+    // Retry button
+    const retryButton = document.getElementById('retryButton');
+    if (retryButton) {
+        retryButton.addEventListener('click', () => {
+            vscode.postMessage({ type: 'retry' });
+            showLoadingState();
+        });
+    }
+    
+    // Filter buttons
+    document.querySelectorAll('.filter-button').forEach(button => {
+        button.addEventListener('click', () => {
+            currentFilter = button.dataset.filter;
+            document.querySelectorAll('.filter-button').forEach(b => b.classList.remove('active'));
+            button.classList.add('active');
+            if (analysisData) {
+                renderReviewPanel(analysisData.review);
+            }
+        });
+    });
+    
+    // Docs tabs
+    document.querySelectorAll('.docs-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            currentDocsTab = tab.dataset.tab;
+            document.querySelectorAll('.docs-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            
+            document.getElementById('docsContent').classList.toggle('hidden', currentDocsTab !== 'docs');
+            document.getElementById('testsContent').classList.toggle('hidden', currentDocsTab !== 'tests');
+        });
+    });
+    
+    // Graph controls
+    const zoomIn = document.getElementById('zoomIn');
+    const zoomOut = document.getElementById('zoomOut');
+    const resetZoom = document.getElementById('resetZoom');
+    const depthSlider = document.getElementById('depthSlider');
+    const depthValue = document.getElementById('depthValue');
+    const networkView = document.getElementById('networkView');
+    const treeView = document.getElementById('treeView');
+    
+    if (zoomIn) zoomIn.addEventListener('click', () => zoomGraph(1.2));
+    if (zoomOut) zoomOut.addEventListener('click', () => zoomGraph(0.8));
+    if (resetZoom) resetZoom.addEventListener('click', () => resetGraphZoom());
+    
+    if (depthSlider && depthValue) {
+        depthSlider.addEventListener('input', (e) => {
+            const newDepth = parseInt(e.target.value);
+            depthValue.textContent = newDepth;
+            currentDepth = newDepth;
+            if (currentArchitecture && currentSelectedNode && currentGraphView === 'tree') {
+                renderDependencyTree(currentSelectedNode, currentDepth);
+            }
+        });
+    }
+    
+    // View toggle buttons
+    if (networkView) {
+        networkView.addEventListener('click', () => {
+            currentGraphView = 'network';
+            networkView.classList.add('active');
+            treeView.classList.remove('active');
+            document.getElementById('depthControl').style.display = 'none';
+            if (currentArchitecture) {
+                renderNetworkGraph(currentArchitecture);
+            }
+        });
+    }
+    
+    if (treeView) {
+        treeView.addEventListener('click', () => {
+            currentGraphView = 'tree';
+            treeView.classList.add('active');
+            networkView.classList.remove('active');
+            document.getElementById('depthControl').style.display = 'flex';
+            if (currentArchitecture && currentSelectedNode) {
+                renderDependencyTree(currentSelectedNode, currentDepth);
+            }
+        });
+    }
+}
+
+// Show loading state
+
+
+// Update progress
+
+
+// Show error state
+
+
+// Show results
+
+
+// Hide all state panels
+
+
+// Switch between panels
+
+
+// Update badge counts
+
+
+// Render Health Panel
+
+
+// Animate score number
+
+
+// Render Architecture Panel - Support both Network and Tree views
+let currentArchitecture = null;
+
+
+
+
+
+// Build subgraph for selected node
+
+
+// Render the dependency tree
+
+
+// Graph zoom controls
+
+
+
+
+// Render Review Panel
+
+
+// Render Docs Panel
+
+
+// Render Security Panel
+
+
+// Utility functions
+
+
+
+
+// Export for inline handlers
+
+
+// Made with Bob
+// Render Network Graph (Original force-directed layout from f3fe30d)

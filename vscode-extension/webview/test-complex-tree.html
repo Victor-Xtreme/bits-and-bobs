@@ -3,16 +3,51 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dependency Tree Test</title>
+    <title>Complex Dependency Tree Test</title>
     <link rel="stylesheet" href="styles.css">
     <style>
         body {
             background-color: #1e1e1e;
             color: #cccccc;
         }
+        .test-info {
+            position: fixed;
+            top: 60px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            max-width: 300px;
+            z-index: 1000;
+        }
+        .test-info h3 {
+            margin: 0 0 8px 0;
+            color: #3b82f6;
+        }
+        .test-info ul {
+            margin: 8px 0;
+            padding-left: 20px;
+        }
+        .test-info li {
+            margin: 4px 0;
+        }
     </style>
 </head>
 <body>
+    <!-- Test Info Panel -->
+    <div class="test-info">
+        <h3>🧪 Complex Test Data</h3>
+        <ul>
+            <li><strong>31 nodes</strong> (2 entry, 19 services, 4 utils, 3 configs, 5 tests)</li>
+            <li><strong>68 edges</strong> with varied relationships</li>
+            <li><strong>Multi-level dependencies</strong> up to 5 levels deep</li>
+        </ul>
+        <p style="margin-top: 12px; font-size: 11px; color: #888;">
+            Try clicking different nodes and adjusting depth to explore the complex dependency graph.
+        </p>
+    </div>
+
     <!-- Navigation Tabs -->
     <nav class="tab-bar">
         <button class="tab-button" data-panel="health">
@@ -66,7 +101,21 @@
         <!-- Health Score Panel -->
         <div id="healthPanel" class="panel hidden">
             <div class="score-card">
-                <h2>Health Score Panel</h2>
+                <div class="score-ring-container">
+                    <svg class="score-ring" viewBox="0 0 100 100">
+                        <circle class="ring-bg" cx="50" cy="50" r="40"/>
+                        <circle id="ringFill" class="ring-fill" cx="50" cy="50" r="40"
+                                stroke-dasharray="251"
+                                stroke-dashoffset="251"/>
+                    </svg>
+                    <div class="score-number" id="scoreNum">0</div>
+                </div>
+                <div id="gradeBadge" class="grade-badge">-</div>
+                <p id="summary" class="summary"></p>
+                <div class="priorities">
+                    <h4>Top Priorities</h4>
+                    <ol id="priorityList" class="priority-list"></ol>
+                </div>
             </div>
         </div>
 
@@ -83,8 +132,8 @@
                     <button id="resetZoom" class="control-button">⟲</button>
                     <div class="depth-control" id="depthControl">
                         <label for="depthSlider">Depth:</label>
-                        <input type="range" id="depthSlider" min="1" max="5" value="1" step="1">
-                        <span id="depthValue">1</span>
+                        <input type="range" id="depthSlider" min="1" max="5" value="2" step="1">
+                        <span id="depthValue">2</span>
                     </div>
                 </div>
                 <div id="graphContainer" class="graph-container"></div>
@@ -92,20 +141,59 @@
             </div>
         </div>
 
-        <!-- Other panels hidden -->
-        <div id="reviewPanel" class="panel hidden"></div>
-        <div id="docsPanel" class="panel hidden"></div>
-        <div id="securityPanel" class="panel hidden"></div>
+        <!-- Code Review Panel -->
+        <div id="reviewPanel" class="panel hidden">
+            <div class="review-container">
+                <div class="filter-bar">
+                    <button class="filter-button active" data-filter="all">All</button>
+                    <button class="filter-button" data-filter="high">High+</button>
+                    <button class="filter-button" data-filter="critical">Critical</button>
+                </div>
+                <div id="findingsList" class="findings-list"></div>
+                <div id="emptyReview" class="empty-state hidden">
+                    <p>🎉 No code review issues found!</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Documentation Panel -->
+        <div id="docsPanel" class="panel hidden">
+            <div class="docs-container">
+                <div class="docs-tabs">
+                    <button class="docs-tab active" data-tab="docs">Documentation</button>
+                    <button class="docs-tab" data-tab="tests">Test Stubs</button>
+                </div>
+                <div id="docsContent" class="docs-content"></div>
+                <div id="testsContent" class="docs-content hidden"></div>
+            </div>
+        </div>
+
+        <!-- Security Panel -->
+        <div id="securityPanel" class="panel hidden">
+            <div class="security-container">
+                <div class="security-section">
+                    <h3>🔒 Security Issues</h3>
+                    <div id="securityIssues" class="security-list"></div>
+                    <div id="emptySecurityIssues" class="empty-state hidden">
+                        <p>🎉 No security issues found!</p>
+                    </div>
+                </div>
+                <div class="security-section">
+                    <h3>⚡ Modernization Opportunities</h3>
+                    <div id="modernizationList" class="security-list"></div>
+                </div>
+            </div>
+        </div>
     </main>
 
     <!-- Load D3.js for architecture graph -->
     <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
     
-    <!-- Sample Data -->
-    <script src="sample-data.js"></script>
+    <!-- Complex Sample Data -->
+    <script src="sample-data-complex.js"></script>
     
     <!-- Main JavaScript -->
-    <script src="main.js"></script>
+    
     
     <!-- Auto-load test data -->
     <script>
@@ -129,15 +217,28 @@
             window.vscode = acquireVsCodeApi();
         }
         
-        // Auto-load sample data after page loads
+        // Auto-load complex sample data after page loads
         window.addEventListener('load', () => {
+            console.log('Loading complex test data...');
             setTimeout(() => {
                 window.postMessage({
                     type: 'results',
-                    data: sampleAnalysisData
+                    data: complexAnalysisData
                 }, '*');
             }, 500);
         });
     </script>
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+
+    <script src="main.js"></script>
 </body>
 </html>
