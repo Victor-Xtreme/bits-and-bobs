@@ -7,7 +7,7 @@ import os
 import asyncio
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Dict, Tuple
 
 from .models import (
     ParsedCodebase,
@@ -22,7 +22,7 @@ from .jobs import update_job_progress
 logger = logging.getLogger(__name__)
 
 
-def _collect_all_files(path: Path) -> list[Path]:
+def _collect_all_files(path: Path) -> List[Path]:
     """Collect all files from directory, skipping common ignore directories."""
     all_files = []
     for root, dirs, files in os.walk(path):
@@ -40,10 +40,10 @@ def _collect_all_files(path: Path) -> list[Path]:
 
 
 def _filter_files_by_language_and_size(
-    all_files: list[Path],
-    supported_languages: list[str],
+    all_files: List[Path],
+    supported_languages: List[str],
     max_size: int
-) -> list[Path]:
+) -> List[Path]:
     """Filter files by supported language extensions and size limits."""
     filtered_files = []
     
@@ -66,9 +66,9 @@ def _filter_files_by_language_and_size(
 
 
 def _validate_filtered_files(
-    filtered_files: list[Path],
-    all_files: list[Path],
-    supported_languages: list[str]
+    filtered_files: List[Path],
+    all_files: List[Path],
+    supported_languages: List[str]
 ) -> None:
     """Validate that we have files to parse after filtering."""
     if not filtered_files:
@@ -85,10 +85,10 @@ def _validate_filtered_files(
 
 
 async def _parse_files_with_progress(
-    filtered_files: list[Path],
+    filtered_files: List[Path],
     base_path: Path,
     job_id: Optional[str]
-) -> tuple[list[ParsedFile], dict[str, list[str]]]:
+) -> Tuple[List[ParsedFile], Dict[str, List[str]]]:
     """Parse all files and build import graph with progress tracking."""
     parsed_files = []
     import_graph = {}

@@ -4,6 +4,7 @@ Handles environment variables and application settings
 """
 
 from pathlib import Path
+from typing import List
 from pydantic import field_validator, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -78,11 +79,11 @@ class Settings(BaseSettings):
         extra="ignore"
     )
     
-    def get_supported_languages_list(self) -> list[str]:
+    def get_supported_languages_list(self) -> List[str]:
         """Get supported languages as a list"""
         return [lang.strip() for lang in self.supported_languages.split(",") if lang.strip()]
     
-    def get_cors_origins_list(self) -> list[str]:
+    def get_cors_origins_list(self) -> List[str]:
         """Get CORS origins as a list"""
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
     

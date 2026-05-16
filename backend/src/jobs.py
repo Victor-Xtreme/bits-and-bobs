@@ -6,11 +6,12 @@ Thread-safe in-memory job store for tracking analysis progress
 import uuid
 from datetime import datetime, timedelta, timezone
 from threading import Lock
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 from .models import (
     ProgressStep,
     StepStatus,
+    JobStatusEnum,
     JobStatus,
     AnalysisResult,
     AnalysisError,
@@ -26,8 +27,8 @@ class JobState:
     def __init__(self, job_id: str):
         self.job_id = job_id
         self.created_at = datetime.now(timezone.utc)
-        self.status = JobStatus.RUNNING
-        self.progress: list[ProgressStep] = []
+        self.status = JobStatusEnum.RUNNING
+        self.progress: List[ProgressStep] = []
         self.result: Optional[AnalysisResult] = None
         self.error: Optional[AnalysisError] = None
         self._lock = Lock()  # Per-job lock for thread safety
@@ -127,7 +128,7 @@ def update_job_progress(
             return
         
         # Check if job is still running before updating
-        if job.status != JobStatus.RUNNING:
+        if job.status != JobStatusEnum.RUNNING:
             return
         
         # Keep reference to job while we have the lock
@@ -167,7 +168,7 @@ def set_job_result(job_id: str, result: AnalysisResult) -> None:
             return
     
     with job._lock:
-        job.status = JobStatus.COMPLETED
+        job.status = JobStatusEnum.COMPLETED
         job.result = result
         
         # Mark all steps as done
@@ -190,7 +191,7 @@ def set_job_error(job_id: str, error: AnalysisError) -> None:
         job_ref = job
     
     with job_ref._lock:
-        job_ref.status = JobStatus.FAILED
+        job_ref.status = JobStatusEnum.FAILED
         job_ref.error = error
         
         # Leave active step as-is to show where failure occurred
@@ -211,7 +212,7 @@ def cleanup_old_jobs() -> int:
     with _jobs_lock:
         job_ids_to_remove = [
             job_id for job_id, job in _jobs.items()
-            if job.created_at < cutoff_time and job.status != JobStatus.RUNNING
+            if job.created_at < cutoff_time and job.status != JobStatusEnum.RUNNING
         ]
         
         for job_id in job_ids_to_remove:
@@ -229,6 +230,29 @@ def get_active_job_count() -> int:
         int: Number of active jobs
     """
     with _jobs_lock:
-        return sum(1 for job in _jobs.values() if job.status == JobStatus.RUNNING)
+        return sum(1 for job in _jobs.values() if job.status == JobStatusEnum.RUNNING)
+
+
+def get_job_status(job_id: str) -> Optional[JobStatus]:
+    """
+    Get job status as API model.
+    
+    Args:
+        job_id: The job ID
+        
+    Returns:
+        JobStatus model if found, None otherwise
+    """
+    job = get_job(job_id)
+    if job is None:
+        return None
+    
+    return JobStatus(
+        job_id=job.job_id,
+        status=job.status.value,
+        progress=job.progress,
+        result=job.result,
+        error=job.error
+    )
 
 # Made with Bob
