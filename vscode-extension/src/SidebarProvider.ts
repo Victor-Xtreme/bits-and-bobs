@@ -138,6 +138,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     _view?: vscode.WebviewView;
     _doc?: vscode.TextDocument;
     private _pollingInterval?: ReturnType<typeof setInterval>;
+    private _retryCount: number = 0;
+    private readonly _maxRetries: number = 3;
 
     constructor(private readonly _extensionUri: vscode.Uri) {}
 
@@ -229,6 +231,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             clearInterval(this._pollingInterval);
         }
 
+        // Reset retry count for new polling session
+        this._retryCount = 0;
+
         const config = getConfig();
         
         // Poll at configured interval
@@ -257,10 +262,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
             const apiResponse = await response.json() as ApiResponse;
 
+            // Reset retry count on successful response
+            this._retryCount = 0;
+
             // Update progress display
             this._updateProgress(apiResponse.progress);
 
-            // Handle different response types
+            // Handle different response types based on 'type' field
             if (apiResponse.type === 'result' && apiResponse.payload) {
                 // Analysis completed successfully
                 const result = apiResponse.payload as AnalysisResult;
@@ -271,11 +279,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     this._pollingInterval = undefined;
                 }
 
-                // Send completion message with health score
+                // Send completion message with health score from payload.score.score
                 this._view.webview.postMessage({
                     type: 'complete',
                     healthScore: result.score.score,
                     grade: result.score.grade,
+                    summary: result.score.summary,
                     result: result
                 });
             } else if (apiResponse.type === 'error' && apiResponse.payload) {
@@ -296,16 +305,22 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             // If type is 'request', continue polling (analysis still in progress)
 
         } catch (error) {
-            // Stop polling on error
-            if (this._pollingInterval) {
-                clearInterval(this._pollingInterval);
-                this._pollingInterval = undefined;
-            }
+            // Retry logic: don't stop immediately, retry up to maxRetries times
+            this._retryCount++;
+            
+            if (this._retryCount >= this._maxRetries) {
+                // Stop polling after max retries
+                if (this._pollingInterval) {
+                    clearInterval(this._pollingInterval);
+                    this._pollingInterval = undefined;
+                }
 
-            this._view.webview.postMessage({
-                type: 'error',
-                message: `Failed to check results: ${error instanceof Error ? error.message : String(error)}`
-            });
+                this._view.webview.postMessage({
+                    type: 'error',
+                    message: `Failed to check results after ${this._maxRetries} retries: ${error instanceof Error ? error.message : String(error)}`
+                });
+            }
+            // Otherwise, continue polling and retry
         }
     }
 
