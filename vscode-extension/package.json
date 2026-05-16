@@ -14,6 +14,18 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "commands": [
+      {
+        "command": "reposense.refresh",
+        "title": "Refresh Analysis",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "reposense.openInBrowser",
+        "title": "RepoSense: Open in Browser",
+        "icon": "$(globe)"
+      }
+    ],
     "viewsContainers": {
       "activitybar": [
         {
@@ -31,6 +43,15 @@
           "name": "RepoSense",
           "icon": "media/icon.svg",
           "contextualTitle": "RepoSense"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "reposense.refresh",
+          "when": "view == reposense-sidebar",
+          "group": "navigation"
         }
       ]
     },
