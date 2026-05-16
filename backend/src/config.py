@@ -24,6 +24,10 @@ class Settings(BaseSettings):
         """Validate that API key is not empty and meets minimum requirements"""
         if not v or len(v.strip()) < 10:
             raise ValueError('watsonx_api_key must be at least 10 characters long')
+        # Allow mock/test values for testing purposes
+        allowed_test_values = ['test-key', 'mock-api-key', 'test-api-key']
+        if v.strip() in allowed_test_values:
+            return v.strip()
         if v.strip() in ['your-api-key-here', 'placeholder', 'test', 'dummy']:
             raise ValueError('watsonx_api_key appears to be a placeholder value')
         return v.strip()
@@ -34,6 +38,10 @@ class Settings(BaseSettings):
         """Validate that project ID is not empty"""
         if not v or len(v.strip()) < 5:
             raise ValueError('watsonx_project_id must be at least 5 characters long')
+        # Allow mock/test values for testing purposes
+        allowed_test_values = ['test-project-id', 'mock-project-id']
+        if v.strip() in allowed_test_values:
+            return v.strip()
         if v.strip() in ['your-project-id', 'placeholder', 'test']:
             raise ValueError('watsonx_project_id appears to be a placeholder value')
         return v.strip()

@@ -231,4 +231,21 @@ def get_active_job_count() -> int:
     with _jobs_lock:
         return sum(1 for job in _jobs.values() if job.status == JobStatus.RUNNING)
 
+
+def delete_job(job_id: str) -> bool:
+    """
+    Delete a job from the store.
+    
+    Args:
+        job_id: The job ID to delete
+        
+    Returns:
+        bool: True if job was deleted, False if job not found
+    """
+    with _jobs_lock:
+        if job_id not in _jobs:
+            return False
+        del _jobs[job_id]
+        return True
+
 # Made with Bob

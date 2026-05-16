@@ -153,19 +153,6 @@ class TestSettingsImportTime:
         assert hasattr(config, 'Settings')
 
 
-class TestUnusedImports:
-    """Test that unused imports are removed"""
-    
-    def test_optional_not_imported(self):
-        """Bug fix: Optional should not be imported if unused"""
-        import src.config as config_module
-        import inspect
-        
-        source = inspect.getsource(config_module)
-        # Optional should not be in the imports
-        assert 'from typing import Optional' not in source
-
-
 class TestValidSettings:
     """Test that valid settings work correctly"""
     

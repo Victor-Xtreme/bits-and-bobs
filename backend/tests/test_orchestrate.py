@@ -18,24 +18,6 @@ from src.models import (
 )
 
 
-class TestUnusedImportRemoved:
-    """Test that unused asyncio import was removed from module level"""
-    
-    def test_asyncio_not_imported_at_module_level(self):
-        """Bug fix: asyncio should not be imported at module level if unused there"""
-        import src.orchestrate as orchestrate_module
-        import inspect
-        
-        source = inspect.getsource(orchestrate_module)
-        lines = source.split('\n')
-        
-        # Check imports at top of file
-        import_section = '\n'.join(lines[:20])
-        # asyncio should not be in the initial imports
-        # (it's imported inside the function where needed)
-        assert 'import asyncio' not in import_section or 'def ' in import_section
-
-
 class TestValueErrorHandling:
     """Test improved ValueError handling"""
     

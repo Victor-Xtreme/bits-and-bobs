@@ -25,7 +25,8 @@ from .jobs import (
     create_job,
     get_job,
     cleanup_old_jobs,
-    get_active_job_count
+    get_active_job_count,
+    delete_job as delete_job_from_store
 )
 from .orchestrate import orchestrate_analysis
 
@@ -246,12 +247,8 @@ async def delete_job(job_id: str):
     Raises:
         HTTPException: If job not found
     """
-    from .jobs import _jobs, _jobs_lock
-    
-    with _jobs_lock:
-        if job_id not in _jobs:
-            raise HTTPException(status_code=404, detail="Job not found")
-        del _jobs[job_id]
+    if not delete_job_from_store(job_id):
+        raise HTTPException(status_code=404, detail="Job not found")
     
     return {"message": "Job deleted successfully"}
 

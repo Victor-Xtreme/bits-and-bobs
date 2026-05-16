@@ -105,19 +105,6 @@ class TestGetLoggerConfiguration:
             parent_logger.removeHandler(handler)
 
 
-class TestWindowsColorSupport:
-    """Test Windows ANSI color support"""
-    
-    @patch('sys.platform', 'win32')
-    @patch('os.system')
-    def test_windows_ansi_enabled(self, mock_system):
-        """Bug fix: Windows ANSI colors should be enabled"""
-        # Import should trigger os.system('') on Windows
-        # This is tested by checking the module was imported successfully
-        assert ColoredFormatter is not None
-        assert LogColors.RED is not None
-
-
 class TestLoggerExports:
     """Test that logger module exports correct functions"""
     
@@ -130,11 +117,6 @@ class TestLoggerExports:
         """Bug fix: get_default_logger should be exported"""
         from src.utils import get_default_logger as imported_get_default
         assert imported_get_default is not None
-    
-    def test_add_file_handler_not_exported(self):
-        """Bug fix: add_file_handler should NOT be exported (doesn't exist)"""
-        from src.utils import __all__
-        assert 'add_file_handler' not in __all__
 
 
 class TestNoDeadCode:

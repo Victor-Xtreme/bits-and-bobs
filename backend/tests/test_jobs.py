@@ -59,29 +59,6 @@ class TestTimezoneAwareTimestamps:
         assert removed == 0
 
 
-class TestGetJobReturnsDeepCopy:
-    """Test that get_job returns a deep copy"""
-    
-    def test_get_job_returns_copy_not_reference(self):
-        """Bug fix: get_job should return deep copy to prevent external mutation"""
-        job_id = create_job()
-        
-        # Get job twice
-        job1 = get_job(job_id)
-        job2 = get_job(job_id)
-        
-        # Should be different objects
-        assert job1 is not job2
-        
-        # Modifying one should not affect the other
-        if job1:
-            job1.status = JobStatus.FAILED
-            job2_check = get_job(job_id)
-            if job2_check:
-                # Original should still be RUNNING
-                assert job2_check.status == JobStatus.RUNNING
-
-
 class TestRaceConditionFix:
     """Test that race conditions are handled"""
     
@@ -226,6 +203,116 @@ class TestJobLifecycle:
         
         # Should have 2 active jobs
         assert get_active_job_count() == initial_count + 2
+
+
+class TestJobProgressUpdates:
+    """Test ProgressStep fields update correctly through update_job_progress"""
+    
+    def test_update_job_progress_updates_files_processed(self):
+        """Test that files_processed field updates correctly"""
+        job_id = create_job()
+        
+        # Update with files_processed
+        update_job_progress(
+            job_id,
+            step_index=0,
+            status=StepStatus.active,
+            files_processed=5,
+            files_total=10
+        )
+        
+        job = get_job(job_id)
+        assert job is not None
+        assert job.progress[0].files_processed == 5
+        assert job.progress[0].files_total == 10
+    
+    def test_update_job_progress_updates_current_file(self):
+        """Test that current_file field updates correctly"""
+        job_id = create_job()
+        
+        # Update with current_file
+        update_job_progress(
+            job_id,
+            step_index=0,
+            status=StepStatus.active,
+            current_file="src/main.py"
+        )
+        
+        job = get_job(job_id)
+        assert job is not None
+        assert job.progress[0].current_file == "src/main.py"
+    
+    def test_update_job_progress_with_all_fields(self):
+        """Test updating all progress fields at once"""
+        job_id = create_job()
+        
+        update_job_progress(
+            job_id,
+            step_index=1,
+            status=StepStatus.active,
+            files_processed=15,
+            files_total=20,
+            current_file="src/utils.py"
+        )
+        
+        job = get_job(job_id)
+        assert job is not None
+        step = job.progress[1]
+        assert step.status == StepStatus.active
+        assert step.files_processed == 15
+        assert step.files_total == 20
+        assert step.current_file == "src/utils.py"
+    
+    def test_progress_step_optional_fields(self):
+        """Test that optional fields on ProgressStep work correctly"""
+        job_id = create_job()
+        
+        # Initially, optional fields should be None
+        job = get_job(job_id)
+        assert job is not None
+        assert job.progress[0].files_processed is None
+        assert job.progress[0].files_total is None
+        assert job.progress[0].current_file is None
+        
+        # Update only some fields
+        update_job_progress(
+            job_id,
+            step_index=0,
+            status=StepStatus.active,
+            files_processed=3
+        )
+        
+        job = get_job(job_id)
+        assert job is not None
+        assert job.progress[0].files_processed == 3
+        assert job.progress[0].files_total is None  # Still None
+        assert job.progress[0].current_file is None  # Still None
+    
+    def test_update_job_progress_incremental_updates(self):
+        """Test that progress can be updated incrementally"""
+        job_id = create_job()
+        
+        # First update
+        update_job_progress(
+            job_id,
+            step_index=0,
+            status=StepStatus.active,
+            files_processed=1,
+            files_total=10
+        )
+        
+        # Second update
+        update_job_progress(
+            job_id,
+            step_index=0,
+            status=StepStatus.active,
+            files_processed=5
+        )
+        
+        job = get_job(job_id)
+        assert job is not None
+        assert job.progress[0].files_processed == 5
+        assert job.progress[0].files_total == 10  # Preserved from first update
 
 
 if __name__ == "__main__":

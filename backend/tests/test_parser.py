@@ -180,6 +180,91 @@ class TestParseCodebaseIntegration:
             assert len(result.files) == 5
 
 
+class TestParsePythonFile:
+    """Test parse_python_file with actual Python content"""
+    
+    @pytest.mark.asyncio
+    async def test_parse_python_file_with_classes_and_functions(self):
+        """Test parsing Python file with classes and functions"""
+        from src.parser import parse_python_file
+        
+        content = '''
+class MyClass:
+    """A test class"""
+    def method_one(self):
+        pass
+    
+    def method_two(self):
+        pass
+
+def standalone_function():
+    """A standalone function"""
+    pass
+'''
+        
+        result = await parse_python_file("test.py", content)
+        
+        assert result.language == "python"
+        assert result.path == "test.py"
+        
+        # Should have 1 class
+        assert len(result.classes) == 1
+        assert result.classes[0].name == "MyClass"
+        assert result.classes[0].docstring == "A test class"
+        
+        # Should have 3 functions (2 methods + 1 standalone)
+        assert len(result.functions) == 3
+        function_names = [f.name for f in result.functions]
+        assert "method_one" in function_names
+        assert "method_two" in function_names
+        assert "standalone_function" in function_names
+    
+    @pytest.mark.asyncio
+    async def test_parse_python_file_id_format(self):
+        """Test that IDs follow file::name and file::Class::method format"""
+        from src.parser import parse_python_file
+        
+        content = '''
+class TestClass:
+    def test_method(self):
+        pass
+
+def test_function():
+    pass
+'''
+        
+        result = await parse_python_file("module.py", content)
+        
+        # Class ID should be file::name
+        assert result.classes[0].id == "module.py::TestClass"
+        
+        # Method ID should be file::Class::method
+        method = [f for f in result.functions if f.name == "test_method"][0]
+        assert method.id == "module.py::TestClass::test_method"
+        
+        # Standalone function ID should be file::name
+        func = [f for f in result.functions if f.name == "test_function"][0]
+        assert func.id == "module.py::test_function"
+    
+    @pytest.mark.asyncio
+    async def test_parse_python_file_with_syntax_error(self):
+        """Test that files with syntax errors return empty structure"""
+        from src.parser import parse_python_file
+        
+        content = '''
+def broken_function(
+    # Missing closing parenthesis and body
+'''
+        
+        result = await parse_python_file("broken.py", content)
+        
+        # Should return empty structure, not crash
+        assert result.language == "python"
+        assert result.path == "broken.py"
+        assert len(result.classes) == 0
+        assert len(result.functions) == 0
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 
