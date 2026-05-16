@@ -372,140 +372,6 @@ function renderArchitecturePanel(architecture) {
     }
 }
 
-// Render Network Graph (Original force-directed layout)
-function renderNetworkGraph(architecture) {
-    const container = document.getElementById('graphContainer');
-    container.innerHTML = '';
-    
-    const width = container.clientWidth || 1000;
-    const height = container.clientHeight || 600;
-    
-    // Create SVG
-    const svg = d3.select('#graphContainer')
-        .append('svg')
-        .attr('width', width)
-        .attr('height', height);
-    
-    const g = svg.append('g');
-    
-    // Add zoom behavior
-    const zoom = d3.zoom()
-        .scaleExtent([0.1, 4])
-        .on('zoom', (event) => {
-            g.attr('transform', event.transform);
-        });
-    
-    svg.call(zoom);
-    
-    // Store zoom for controls
-    container._zoom = zoom;
-    container._svg = svg;
-    
-    // Color mapping
-    const colorMap = {
-        entry: '#3b82f6',
-        service: '#8b5cf6',
-        util: '#10b981',
-        config: '#f59e0b',
-        test: '#6b7280'
-    };
-    
-    // Create force simulation
-    graphSimulation = d3.forceSimulation(architecture.nodes)
-        .force('link', d3.forceLink(architecture.edges).id(d => d.id).distance(100))
-        .force('charge', d3.forceManyBody().strength(-300))
-        .force('center', d3.forceCenter(width / 2, height / 2))
-        .force('collision', d3.forceCollide().radius(30));
-    
-    // Create links
-    const link = g.append('g')
-        .selectAll('line')
-        .data(architecture.edges)
-        .join('line')
-        .attr('stroke', '#6b7280')
-        .attr('stroke-opacity', 0.6)
-        .attr('stroke-width', 2);
-    
-    // Create nodes
-    const node = g.append('g')
-        .selectAll('circle')
-        .data(architecture.nodes)
-        .join('circle')
-        .attr('r', 12)
-        .attr('fill', d => colorMap[d.type] || '#6b7280')
-        .attr('stroke', '#fff')
-        .attr('stroke-width', 2)
-        .style('cursor', 'pointer')
-        .call(d3.drag()
-            .on('start', dragStarted)
-            .on('drag', dragged)
-            .on('end', dragEnded));
-    
-    // Add labels
-    const label = g.append('g')
-        .selectAll('text')
-        .data(architecture.nodes)
-        .join('text')
-        .text(d => d.label || d.name)
-        .attr('font-size', 10)
-        .attr('dx', 15)
-        .attr('dy', 4)
-        .attr('fill', '#ffffff');
-    
-    // Tooltip
-    const tooltip = document.getElementById('nodeTooltip');
-    
-    node.on('mouseover', (event, d) => {
-        tooltip.innerHTML = `
-            <strong>${d.label || d.name}</strong><br>
-            <small>Type: ${d.type}</small><br>
-            ${d.description ? `<p style="margin-top: 8px; font-size: 12px;">${d.description}</p>` : ''}
-        `;
-        tooltip.classList.remove('hidden');
-    })
-    .on('mousemove', (event) => {
-        tooltip.style.left = (event.pageX + 10) + 'px';
-        tooltip.style.top = (event.pageY + 10) + 'px';
-    })
-    .on('mouseout', () => {
-        tooltip.classList.add('hidden');
-    });
-    
-    // Update positions on tick
-    graphSimulation.on('tick', () => {
-        link
-            .attr('x1', d => d.source.x)
-            .attr('y1', d => d.source.y)
-            .attr('x2', d => d.target.x)
-            .attr('y2', d => d.target.y);
-        
-        node
-            .attr('cx', d => d.x)
-            .attr('cy', d => d.y);
-        
-        label
-            .attr('x', d => d.x)
-            .attr('y', d => d.y);
-    });
-    
-    // Drag functions
-    function dragStarted(event, d) {
-        if (!event.active) graphSimulation.alphaTarget(0.3).restart();
-        d.fx = d.x;
-        d.fy = d.y;
-    }
-    
-    function dragged(event, d) {
-        d.fx = event.x;
-        d.fy = event.y;
-    }
-    
-    function dragEnded(event, d) {
-        if (!event.active) graphSimulation.alphaTarget(0);
-        d.fx = null;
-        d.fy = null;
-    }
-}
 
 // Build subgraph for selected node
 function buildSubgraph(nodeId, allNodes, allEdges, depth) {
@@ -559,6 +425,7 @@ function buildSubgraph(nodeId, allNodes, allEdges, depth) {
 
 // Render the dependency tree
 function renderDependencyTree(nodeId, depth) {
+    if (graphSimulation) graphSimulation.stop();
     const container = document.getElementById('graphContainer');
     container.innerHTML = '';
     
@@ -950,3 +817,144 @@ function copyToClipboard(button) {
 window.copyToClipboard = copyToClipboard;
 
 // Made with Bob
+// Render Network Graph (Original force-directed layout from f3fe30d)
+function renderNetworkGraph(architecture) {
+    if (graphSimulation) {
+        graphSimulation.stop();
+    }
+    const container = document.getElementById('graphContainer');
+    container.innerHTML = '';
+    
+    const width = container.clientWidth || 1000;
+    const height = container.clientHeight || 600;
+    
+    // Create SVG
+    const svg = d3.select('#graphContainer')
+        .append('svg')
+        .attr('width', width)
+        .attr('height', height);
+    
+    const g = svg.append('g');
+    
+    // Add zoom behavior
+    const zoom = d3.zoom()
+        .scaleExtent([0.1, 4])
+        .on('zoom', (event) => {
+            g.attr('transform', event.transform);
+        });
+    
+    svg.call(zoom);
+    
+    // Store zoom for controls
+    container._zoom = zoom;
+    container._svg = svg;
+    
+    // Color mapping
+    const colorMap = {
+        entry: '#3b82f6',
+        service: '#8b5cf6',
+        util: '#10b981',
+        config: '#f59e0b',
+        test: '#6b7280'
+    };
+    
+    // Deep copy nodes and edges to avoid mutating currentArchitecture
+    const graphNodes = architecture.nodes.map(n => ({...n}));
+    const graphEdges = architecture.edges.map(e => ({...e}));
+    
+    // Create force simulation
+    graphSimulation = d3.forceSimulation(graphNodes)
+        .force('link', d3.forceLink(graphEdges).id(d => d.id).distance(100))
+        .force('charge', d3.forceManyBody().strength(-300))
+        .force('center', d3.forceCenter(width / 2, height / 2))
+        .force('collision', d3.forceCollide().radius(30));
+    
+    // Create links
+    const link = g.append('g')
+        .selectAll('line')
+        .data(graphEdges)
+        .join('line')
+        .attr('stroke', '#6b7280')
+        .attr('stroke-opacity', 0.6)
+        .attr('stroke-width', 2);
+    
+    // Create nodes
+    const node = g.append('g')
+        .selectAll('circle')
+        .data(graphNodes)
+        .join('circle')
+        .attr('r', 12)
+        .attr('fill', d => colorMap[d.type] || '#6b7280')
+        .attr('stroke', '#fff')
+        .attr('stroke-width', 2)
+        .style('cursor', 'pointer')
+        .call(d3.drag()
+            .on('start', dragStarted)
+            .on('drag', dragged)
+            .on('end', dragEnded));
+    
+    // Add labels
+    const label = g.append('g')
+        .selectAll('text')
+        .data(graphNodes)
+        .join('text')
+        .text(d => d.name)
+        .attr('font-size', 10)
+        .attr('dx', 15)
+        .attr('dy', 4)
+        .attr('fill', '#ffffff');
+    
+    // Tooltip
+    const tooltip = document.getElementById('nodeTooltip');
+    
+    node.on('mouseover', (event, d) => {
+        tooltip.innerHTML = `
+            <strong>${d.name}</strong><br>
+            <small>Type: ${d.type}</small><br>
+            ${d.description ? `<p style="margin-top: 8px; font-size: 12px;">${d.description}</p>` : ''}
+        `;
+        tooltip.classList.remove('hidden');
+    })
+    .on('mousemove', (event) => {
+        tooltip.style.left = (event.pageX + 10) + 'px';
+        tooltip.style.top = (event.pageY + 10) + 'px';
+    })
+    .on('mouseout', () => {
+        tooltip.classList.add('hidden');
+    });
+    
+    // Update positions on tick
+    graphSimulation.on('tick', () => {
+        link
+            .attr('x1', d => d.source.x)
+            .attr('y1', d => d.source.y)
+            .attr('x2', d => d.target.x)
+            .attr('y2', d => d.target.y);
+        
+        node
+            .attr('cx', d => d.x)
+            .attr('cy', d => d.y);
+        
+        label
+            .attr('x', d => d.x)
+            .attr('y', d => d.y);
+    });
+    
+    // Drag functions
+    function dragStarted(event, d) {
+        if (!event.active) graphSimulation.alphaTarget(0.3).restart();
+        d.fx = d.x;
+        d.fy = d.y;
+    }
+    
+    function dragged(event, d) {
+        d.fx = event.x;
+        d.fy = event.y;
+    }
+    
+    function dragEnded(event, d) {
+        if (!event.active) graphSimulation.alphaTarget(0);
+        d.fx = null;
+        d.fy = null;
+    }
+}

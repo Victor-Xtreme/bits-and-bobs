@@ -74,10 +74,14 @@
         <div id="architecturePanel" class="panel">
             <div class="architecture-container">
                 <div class="graph-controls">
+                    <div class="view-toggle">
+                        <button id="networkView" class="view-button">🌐 Network</button>
+                        <button id="treeView" class="view-button active">🌳 Tree</button>
+                    </div>
                     <button id="zoomIn" class="control-button">🔍+</button>
                     <button id="zoomOut" class="control-button">🔍-</button>
                     <button id="resetZoom" class="control-button">⟲</button>
-                    <div class="depth-control">
+                    <div class="depth-control" id="depthControl">
                         <label for="depthSlider">Depth:</label>
                         <input type="range" id="depthSlider" min="1" max="5" value="1" step="1">
                         <span id="depthValue">1</span>
