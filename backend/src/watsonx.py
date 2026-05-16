@@ -103,7 +103,18 @@ async def _call_watsonx(prompt: str) -> str:
             loop.run_in_executor(None, model.generate_text, prompt),
             timeout=settings.watsonx_timeout
         )
-        return response
+        
+        # Ensure response is a string
+        if isinstance(response, str):
+            return response
+        elif isinstance(response, dict):
+            # If response is a dict, try to extract the text
+            return str(response.get('generated_text', str(response)))
+        elif isinstance(response, list):
+            # If response is a list, join or take first element
+            return str(response[0]) if response else ""
+        else:
+            return str(response)
     except asyncio.TimeoutError:
         logger.error("WatsonX API request timed out")
         raise TimeoutError("WatsonX API request timed out")

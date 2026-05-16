@@ -7,9 +7,20 @@ with support for console and file output, log rotation, and color coding.
 
 import logging
 import sys
+import os
+import copy
 from pathlib import Path
 from typing import Optional
 from logging.handlers import RotatingFileHandler
+
+
+# Enable ANSI color support on Windows
+if sys.platform == "win32":
+    try:
+        # Try to enable ANSI escape sequences on Windows 10+
+        os.system('')
+    except Exception:
+        pass
 
 
 # ANSI color codes for console output
@@ -77,15 +88,20 @@ class ColoredFormatter(logging.Formatter):
             Formatted log message string
         """
         if self.use_colors and record.levelname in LEVEL_COLORS:
+            # Create a copy to avoid mutating the shared record
+            record_copy = copy.copy(record)
+            
             # Color the level name
-            levelname_color = LEVEL_COLORS[record.levelname]
-            record.levelname = f"{levelname_color}{record.levelname}{LogColors.RESET}"
+            levelname_color = LEVEL_COLORS[record_copy.levelname]
+            record_copy.levelname = f"{levelname_color}{record_copy.levelname}{LogColors.RESET}"
             
             # Color the message based on level
-            if record.levelno >= logging.ERROR:
-                record.msg = f"{LogColors.RED}{record.msg}{LogColors.RESET}"
-            elif record.levelno >= logging.WARNING:
-                record.msg = f"{LogColors.YELLOW}{record.msg}{LogColors.RESET}"
+            if record_copy.levelno >= logging.ERROR:
+                record_copy.msg = f"{LogColors.RED}{record_copy.msg}{LogColors.RESET}"
+            elif record_copy.levelno >= logging.WARNING:
+                record_copy.msg = f"{LogColors.YELLOW}{record_copy.msg}{LogColors.RESET}"
+            
+            return super().format(record_copy)
         
         return super().format(record)
 
@@ -122,9 +138,20 @@ def setup_logger(
     # Create logger
     logger = logging.getLogger(name)
     
-    # Avoid adding handlers multiple times
-    if logger.handlers:
+    # Check if logger already has handlers and if reconfiguration is needed
+    # Only skip setup if handlers exist AND no new configuration is requested
+    if logger.handlers and log_file is None:
+        # Logger already configured and no new file handler requested
         return logger
+    
+    # If log_file is specified but logger has handlers, we may need to add file handler
+    if logger.handlers and log_file is not None:
+        # Check if file handler already exists
+        has_file_handler = any(
+            isinstance(h, RotatingFileHandler) for h in logger.handlers
+        )
+        if has_file_handler:
+            return logger
     
     # Set level
     log_level = getattr(logging, level.upper(), logging.INFO)
@@ -187,9 +214,17 @@ def get_logger(name: str) -> logging.Logger:
     """
     logger = logging.getLogger(name)
     
-    # If logger has no handlers, set it up with defaults
-    if not logger.handlers:
+    # Check if logger is properly configured (has handlers or will inherit from parent)
+    # A logger with no handlers but propagate=True will use parent's handlers
+    if not logger.handlers and not logger.propagate:
         return setup_logger(name)
+    
+    # If logger has no handlers but propagate is True, check if parent has handlers
+    if not logger.handlers and logger.propagate:
+        parent = logger.parent
+        if parent and not parent.handlers:
+            # Parent also has no handlers, set up this logger
+            return setup_logger(name)
     
     return logger
 
@@ -251,23 +286,6 @@ def get_default_logger() -> logging.Logger:
         >>> logger.info("Using default logger")
     """
     return default_logger
-    
-    # Set formatter
-    file_format = '%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s'
-    date_format = '%Y-%m-%d %H:%M:%S'
-    file_formatter = logging.Formatter(fmt=file_format, datefmt=date_format)
-    file_handler.setFormatter(file_formatter)
-    
-    # Add handler to logger
-    logger.addHandler(file_handler)
 
-
-# Create a default application logger
-app_logger = setup_logger(
-    name="reposense",
-    level="INFO",
-    log_file="reposense.log",
-    use_colors=True
-)
 
 # Made with Bob

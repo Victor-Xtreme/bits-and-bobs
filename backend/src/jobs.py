@@ -4,9 +4,9 @@ Thread-safe in-memory job store for tracking analysis progress
 """
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from threading import Lock
-from typing import Optional, Dict, Any
+from typing import Optional, Dict
 
 from .models import (
     ProgressStep,
@@ -25,7 +25,7 @@ class JobState:
     
     def __init__(self, job_id: str):
         self.job_id = job_id
-        self.created_at = datetime.utcnow()
+        self.created_at = datetime.now(timezone.utc)
         self.status = JobStatus.RUNNING
         self.progress: list[ProgressStep] = []
         self.result: Optional[AnalysisResult] = None
@@ -67,16 +67,38 @@ def create_job() -> str:
 
 def get_job(job_id: str) -> Optional[JobState]:
     """
-    Retrieve a job by ID.
+    Retrieve a job by ID. Returns a snapshot copy to prevent external mutation.
     
     Args:
         job_id: The job ID to retrieve
         
     Returns:
-        JobState if found, None otherwise
+        Snapshot copy of JobState if found, None otherwise
     """
     with _jobs_lock:
-        return _jobs.get(job_id)
+        job = _jobs.get(job_id)
+        if job is None:
+            return None
+        
+        # Create a new JobState with copied data (avoiding lock copy issues)
+        job_copy = JobState.__new__(JobState)
+        job_copy.job_id = job.job_id
+        job_copy.created_at = job.created_at
+        job_copy.status = job.status
+        job_copy.progress = [
+            ProgressStep(
+                name=step.name,
+                status=step.status,
+                files_processed=step.files_processed,
+                files_total=step.files_total,
+                current_file=step.current_file
+            ) for step in job.progress
+        ]
+        job_copy.result = job.result
+        job_copy.error = job.error
+        job_copy._lock = Lock()  # New lock for the copy
+        
+        return job_copy
 
 
 def update_job_progress(
@@ -98,6 +120,7 @@ def update_job_progress(
         files_total: Optional total number of files
         current_file: Optional current file being processed
     """
+    # Get job reference under global lock and check status
     with _jobs_lock:
         job = _jobs.get(job_id)
         if not job:
@@ -106,11 +129,14 @@ def update_job_progress(
         # Check if job is still running before updating
         if job.status != JobStatus.RUNNING:
             return
+        
+        # Keep reference to job while we have the lock
+        job_ref = job
     
     # Use per-job lock for finer-grained control
-    with job._lock:
-        if 0 <= step_index < len(job.progress):
-            step = job.progress[step_index]
+    with job_ref._lock:
+        if 0 <= step_index < len(job_ref.progress):
+            step = job_ref.progress[step_index]
             step.status = status
             
             if files_processed is not None:
@@ -121,8 +147,8 @@ def update_job_progress(
                 step.current_file = current_file
             
             # If marking as done, set next step as active (only if still running)
-            if status == StepStatus.done and step_index + 1 < len(job.progress):
-                next_step = job.progress[step_index + 1]
+            if status == StepStatus.done and step_index + 1 < len(job_ref.progress):
+                next_step = job_ref.progress[step_index + 1]
                 if next_step.status == StepStatus.pending:
                     next_step.status = StepStatus.active
 
@@ -161,26 +187,31 @@ def set_job_error(job_id: str, error: AnalysisError) -> None:
         job = _jobs.get(job_id)
         if not job:
             return
+        job_ref = job
     
-    with job._lock:
-        job.status = JobStatus.FAILED
-        job.error = error
+    with job_ref._lock:
+        job_ref.status = JobStatus.FAILED
+        job_ref.error = error
+        
+        # Leave active step as-is to show where failure occurred
+        # The job status FAILED indicates the overall failure
 
 
 def cleanup_old_jobs() -> int:
     """
     Remove jobs older than the retention period.
+    Only removes completed or failed jobs, not running jobs.
     
     Returns:
         int: Number of jobs removed
     """
-    cutoff_time = datetime.utcnow() - timedelta(hours=settings.job_retention_hours)
+    cutoff_time = datetime.now(timezone.utc) - timedelta(hours=settings.job_retention_hours)
     removed_count = 0
     
     with _jobs_lock:
         job_ids_to_remove = [
             job_id for job_id, job in _jobs.items()
-            if job.created_at < cutoff_time
+            if job.created_at < cutoff_time and job.status != JobStatus.RUNNING
         ]
         
         for job_id in job_ids_to_remove:

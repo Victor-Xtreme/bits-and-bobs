@@ -22,6 +22,111 @@ from .jobs import update_job_progress
 logger = logging.getLogger(__name__)
 
 
+def _collect_all_files(path: Path) -> list[Path]:
+    """Collect all files from directory, skipping common ignore directories."""
+    all_files = []
+    for root, dirs, files in os.walk(path):
+        # Skip common directories to ignore
+        dirs[:] = [d for d in dirs if d not in {
+            'node_modules', '.git', '__pycache__', 'venv', 'env',
+            '.venv', 'dist', 'build', 'target', '.next', '.nuxt'
+        }]
+        
+        for file in files:
+            file_path = Path(root) / file
+            all_files.append(file_path)
+    
+    return all_files
+
+
+def _filter_files_by_language_and_size(
+    all_files: list[Path],
+    supported_languages: list[str],
+    max_size: int
+) -> list[Path]:
+    """Filter files by supported language extensions and size limits."""
+    filtered_files = []
+    
+    for file_path in all_files:
+        # Check file extension
+        ext = file_path.suffix.lstrip('.')
+        if ext not in supported_languages:
+            continue
+        
+        # Check file size
+        try:
+            if file_path.stat().st_size > max_size:
+                continue
+        except OSError:
+            continue
+        
+        filtered_files.append(file_path)
+    
+    return filtered_files
+
+
+def _validate_filtered_files(
+    filtered_files: list[Path],
+    all_files: list[Path],
+    supported_languages: list[str]
+) -> None:
+    """Validate that we have files to parse after filtering."""
+    if not filtered_files:
+        if all_files:
+            # Files were found but all filtered out
+            raise ValueError(
+                f"No supported files found in codebase. "
+                f"All {len(all_files)} files were filtered out (likely due to size limits or unsupported extensions). "
+                f"Max file size: {settings.max_file_size_mb}MB, "
+                f"Supported languages: {', '.join(supported_languages)}"
+            )
+        else:
+            raise ValueError("No files found in codebase directory")
+
+
+async def _parse_files_with_progress(
+    filtered_files: list[Path],
+    base_path: Path,
+    job_id: Optional[str]
+) -> tuple[list[ParsedFile], dict[str, list[str]]]:
+    """Parse all files and build import graph with progress tracking."""
+    parsed_files = []
+    import_graph = {}
+    total_files = len(filtered_files)
+    
+    for idx, file_path in enumerate(filtered_files):
+        # Update progress if job_id provided
+        if job_id:
+            update_job_progress(
+                job_id,
+                step_index=0,
+                status=StepStatus.active,
+                files_processed=idx,
+                files_total=total_files,
+                current_file=str(file_path.relative_to(base_path))
+            )
+        
+        # Parse the file
+        parsed_file = await parse_file(file_path, base_path)
+        parsed_files.append(parsed_file)
+        
+        # Build import graph
+        if parsed_file.imports:
+            import_graph[parsed_file.path] = parsed_file.imports
+    
+    # Final progress update
+    if job_id:
+        update_job_progress(
+            job_id,
+            step_index=0,
+            status=StepStatus.active,
+            files_processed=total_files,
+            files_total=total_files
+        )
+    
+    return parsed_files, import_graph
+
+
 async def parse_codebase(local_path: str, job_id: Optional[str] = None) -> ParsedCodebase:
     """
     Parse a codebase directory into a structured ParsedCodebase model.
@@ -45,55 +150,16 @@ async def parse_codebase(local_path: str, job_id: Optional[str] = None) -> Parse
     if not path.is_dir():
         raise ValueError(f"Path is not a directory: {local_path}")
     
-    # Get supported languages
+    # Get supported languages and limits
     supported_languages = settings.get_supported_languages_list()
-    
-    # Collect all files
-    all_files = []
-    for root, dirs, files in os.walk(path):
-        # Skip common directories to ignore
-        dirs[:] = [d for d in dirs if d not in {
-            'node_modules', '.git', '__pycache__', 'venv', 'env',
-            '.venv', 'dist', 'build', 'target', '.next', '.nuxt'
-        }]
-        
-        for file in files:
-            file_path = Path(root) / file
-            all_files.append(file_path)
-    
-    # Filter by supported languages and size
     max_size = settings.get_max_file_size_bytes()
-    filtered_files = []
     
-    for file_path in all_files:
-        # Check file extension
-        ext = file_path.suffix.lstrip('.')
-        if ext not in supported_languages:
-            continue
-        
-        # Check file size
-        try:
-            if file_path.stat().st_size > max_size:
-                continue
-        except OSError:
-            continue
-        
-        filtered_files.append(file_path)
+    # Collect and filter files
+    all_files = _collect_all_files(path)
+    filtered_files = _filter_files_by_language_and_size(all_files, supported_languages, max_size)
+    _validate_filtered_files(filtered_files, all_files, supported_languages)
     
-    # Check if we have any files after filtering
-    if not filtered_files:
-        if all_files:
-            # Files were found but all filtered out
-            raise ValueError(
-                f"No supported files found in codebase. "
-                f"All {len(all_files)} files were filtered out (likely due to size limits or unsupported extensions). "
-                f"Max file size: {settings.max_file_size_mb}MB, "
-                f"Supported languages: {', '.join(supported_languages)}"
-            )
-        else:
-            raise ValueError("No files found in codebase directory")
-    
-    # Check max files limit
+    # Apply max files limit
     original_count = len(filtered_files)
     if original_count > settings.max_files_per_analysis:
         logger.warning(
@@ -101,40 +167,8 @@ async def parse_codebase(local_path: str, job_id: Optional[str] = None) -> Parse
         )
         filtered_files = filtered_files[:settings.max_files_per_analysis]
     
-    # Parse each file
-    parsed_files = []
-    import_graph = {}
-    total_files = len(filtered_files)
-    
-    for idx, file_path in enumerate(filtered_files):
-        # Update progress if job_id provided
-        if job_id:
-            update_job_progress(
-                job_id,
-                step_index=0,
-                status=StepStatus.active,
-                files_processed=idx,
-                files_total=total_files,
-                current_file=str(file_path.relative_to(path))
-            )
-        
-        # Parse the file
-        parsed_file = await parse_file(file_path, path)
-        parsed_files.append(parsed_file)
-        
-        # Build import graph
-        if parsed_file.imports:
-            import_graph[parsed_file.path] = parsed_file.imports
-    
-    # Final progress update
-    if job_id:
-        update_job_progress(
-            job_id,
-            step_index=0,
-            status=StepStatus.active,
-            files_processed=total_files,
-            files_total=total_files
-        )
+    # Parse files and build import graph
+    parsed_files, import_graph = await _parse_files_with_progress(filtered_files, path, job_id)
     
     return ParsedCodebase(
         files=parsed_files,
