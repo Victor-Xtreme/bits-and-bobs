@@ -1,35 +1,66 @@
-# RepoSense Webview - P5 Component
+# RepoSense Webview - P5 Component (Ready for P4 Integration)
 
-This directory contains all the UI components for the RepoSense VS Code extension webview.
+## Overview (P5 → P4 Handoff)
 
-## Structure
+### Please refer to this [pull request](https://github.com/Victor-Xtreme/bits-and-bobs/pull/7)
+
+
+This directory contains the complete Webview UI implementation for the RepoSense VS Code extension. All panels (Health Score, Architecture Graphs, Code Review, Documentation, and Security) are fully implemented and ready for integration with the extension backend.
+
+## 📁 File Structure
 
 ```
-webview/
-├── main.html          # Main webview HTML structure
-├── styles.css         # VS Code-themed styling
-├── main.js            # Core JavaScript logic and message handling
-├── components/        # Reusable UI components (future)
-├── assets/            # Images, icons, etc. (future)
-└── utils/             # Helper functions (future)
+vscode-extension/webview/
+├── main.html                          # Main webview HTML structure
+├── main.js                            # Core JavaScript with dual-view graph
+├── styles.css                         # VS Code-themed styling
+│
+├── sample-data.js                     # Simple test data (9 nodes)
+├── sample-data-complex.js             # Complex test data (31 nodes, 68 edges)
+│
+├── test-dependency-tree.html          # Simple standalone test
+├── test-complex-tree.html             # Complex standalone test
+│
+├── db_schema.md                       # Database schema reference
+├── graph_spec.md                      # Graph specification
+├── DEPENDENCY_TREE_IMPLEMENTATION.md  # Implementation details
+├── COMPLETE_GUIDE.md                  # Comprehensive feature guide
+├── P4_P5_INTEGRATION_GUIDE.md         # Integration instructions
+└── README.md                          # This file
 ```
 
-## Features Implemented
+**Note:** Monolithic file structure maintained intentionally for easy string replacement in `getWebviewContent()` - no ES module mapping required.
 
-### 1. **Health Score Panel** 
+## ✨ Features Implemented
+
+### 1. **Health Score Panel**
 - Animated circular progress ring
 - Score animation from 0 to final value
 - Grade badge with color coding (A=green, B=blue, C=amber, D/F=red)
 - Top priorities list
 - Summary text
 
-### 2. **Architecture Graph Panel**
-- D3.js force-directed graph
-- Node colors by type (entry, service, util, config, test)
+### 2. **Architecture Graph Panel** (Dual-View System)
+**Network View** (Original):
+- D3.js force-directed graph showing all nodes
 - Interactive zoom and pan controls
-- Draggable nodes
+- Draggable nodes with spring physics
+- Node colors by type (entry, service, util, config, test)
 - Hover tooltips with module descriptions
-- Spring physics animation
+
+**Tree View** (New - Bidirectional Dependency Tree):
+- Selected node at center (larger, white border)
+- **Dependents** (upstream) positioned above - nodes that depend on selected
+- **Dependencies** (downstream) positioned below - nodes selected depends on
+- **Depth control slider** (1-5 levels) for traversal depth
+- **Click to re-root** - any node becomes new center
+- **Focused subgraph** - shows only relevant nodes around selection
+- **Edge relationship styles**:
+  - Solid lines: `imports`
+  - Dashed lines: `extends`
+  - Dotted lines: `calls`
+
+**View Toggle**: Seamless switch between Network and Tree modes
 
 ### 3. **Code Review Panel**
 - Findings sorted by severity (CRITICAL first)
@@ -57,11 +88,11 @@ webview/
 - Error state with retry button
 - Smooth panel transitions
 
-## Message Protocol
+## 🔌 Integration Notes for P4
 
-The webview communicates with the extension via `postMessage`:
+### Message Protocol
 
-### Messages FROM Extension TO Webview:
+**Extension → Webview (P4 sends to P5):**
 
 ```javascript
 // Loading state
@@ -86,140 +117,104 @@ The webview communicates with the extension via `postMessage`:
 { type: 'error', message: 'Analysis failed: ...' }
 ```
 
-### Messages FROM Webview TO Extension:
+**Webview → Extension (P5 sends to P4):**
 
 ```javascript
 // Retry analysis
 { type: 'retry' }
 ```
 
-## Data Structure Examples
+### Data Structure Requirements
 
-### Health Data
+**GraphNode:**
 ```javascript
 {
-  score: 85,
-  grade: 'B',
-  summary: 'Your codebase is in good shape...',
-  priorities: [
-    'Add unit tests for core modules',
-    'Document public APIs',
-    'Fix 3 critical security issues'
-  ]
+  id: string,           // Must match ParsedFile.path
+  label: string,        // Display name (NEW)
+  name: string,         // File name
+  type: NodeType,       // 'entry' | 'service' | 'util' | 'config' | 'test'
+  description: string   // Tooltip description
 }
 ```
 
-### Architecture Data
+**GraphEdge:**
 ```javascript
 {
-  nodes: [
-    { id: 'main', name: 'main.js', type: 'entry', description: 'Entry point' },
-    { id: 'api', name: 'api.js', type: 'service', description: 'API handler' }
-  ],
-  edges: [
-    { source: 'main', target: 'api' }
-  ]
+  source: string,           // GraphNode.id of dependent
+  target: string,           // GraphNode.id of dependency
+  relationship: string      // 'imports' | 'extends' | 'calls' (NEW)
 }
 ```
 
-### Review Data
-```javascript
-{
-  findings: [
-    {
-      severity: 'CRITICAL',
-      file: 'src/auth.js',
-      line: 42,
-      message: 'Hardcoded credentials detected',
-      suggestion: 'Use environment variables for sensitive data'
-    }
-  ]
-}
+## 🧪 Testing
+
+### Standalone Browser Testing
+
+Test the UI without VS Code using the provided test files:
+
+```bash
+cd vscode-extension/webview
+python3 -m http.server 8080
 ```
 
-## Styling
+Then open:
+- **Simple test**: http://localhost:8080/test-dependency-tree.html
+- **Complex test**: http://localhost:8080/test-complex-tree.html
 
-The webview uses VS Code's native CSS variables to match the editor theme:
+### Test Scenarios
+1. **View Toggle**: Switch between Network and Tree views
+2. **Re-rooting**: Click nodes in Tree view to change focus
+3. **Depth Control**: Adjust slider (1-5) to see more/fewer levels
+4. **Zoom Controls**: Test zoom in/out/reset
+5. **Edge Styles**: Verify solid/dashed/dotted lines for different relationships
+6. **Node Colors**: Verify colors match type specifications
+7. **All Panels**: Switch tabs to test Health, Review, Docs, Security
+8. **States**: Test loading, progress, error, and retry functionality
 
+## 🎨 Styling
+
+Uses VS Code native CSS variables for seamless theme integration:
 - `--vscode-sideBar-background`
 - `--vscode-foreground`
 - `--vscode-font-family`
 - `--vscode-font-size`
-- And many more...
 
 Custom accent colors:
-- Blue: `#3b82f6`
-- Green: `#10b981`
-- Amber: `#f59e0b`
-- Red: `#ef4444`
-- Purple: `#8b5cf6`
+- Blue: `#3b82f6`, Green: `#10b981`, Amber: `#f59e0b`, Red: `#ef4444`, Purple: `#8b5cf6`, Teal: `#14b8a6`, Gray: `#6b7280`
 
-## Development Notes
+**CSP Updated**: Relaxed for local testing while maintaining security for VS Code iframe.
 
-### Testing the Webview
-1. The webview runs inside VS Code as an iframe
-2. Use Chrome DevTools to inspect: `Help > Toggle Developer Tools`
-3. Test with different themes (dark/light)
-4. Test with various data sizes (empty, small, large datasets)
+## 📖 Documentation
 
-### Performance Considerations
-- D3.js graph is optimized for up to ~100 nodes
-- Large datasets use virtual scrolling (future enhancement)
-- Animations use `requestAnimationFrame` for smooth 60fps
+- **[`COMPLETE_GUIDE.md`](vscode-extension/webview/COMPLETE_GUIDE.md)** - Comprehensive feature documentation
+- **[`DEPENDENCY_TREE_IMPLEMENTATION.md`](vscode-extension/webview/DEPENDENCY_TREE_IMPLEMENTATION.md)** - Technical implementation details
+- **[`P4_P5_INTEGRATION_GUIDE.md`](vscode-extension/webview/P4_P5_INTEGRATION_GUIDE.md)** - Step-by-step integration instructions
+- **[`graph_spec.md`](vscode-extension/webview/graph_spec.md)** - Graph specification
+- **[`db_schema.md`](vscode-extension/webview/db_schema.md)** - Data model reference
 
-### Browser Compatibility
-- Targets VS Code's embedded Chromium
-- Uses modern ES6+ features
-- No polyfills needed
+## 🚀 Performance
 
-## Integration with P4 (Extension Lead)
+- **Tree View**: Client-side BFS traversal, no server calls for re-rooting
+- **Network View**: Force simulation optimized for ~100 nodes
+- **Depth-Limited**: Efficient traversal stops at configured depth
+- **Lazy Rendering**: Graphs only render when Architecture tab is visible
+- **Smooth Animations**: Uses `requestAnimationFrame` for 60fps
 
-P4 will:
-1. Create a webview panel in VS Code
-2. Load `main.html` into the webview
-3. Send messages to update the UI
-4. Handle retry requests from the webview
+## 📦 Dependencies
 
-Example integration code for P4:
-```javascript
-const panel = vscode.window.createWebviewPanel(
-  'reposense',
-  'RepoSense Analysis',
-  vscode.ViewColumn.One,
-  {
-    enableScripts: true,
-    localResourceRoots: [vscode.Uri.file(path.join(context.extensionPath, 'webview'))]
-  }
-);
-
-// Load HTML
-const htmlPath = vscode.Uri.file(path.join(context.extensionPath, 'webview', 'main.html'));
-panel.webview.html = fs.readFileSync(htmlPath.fsPath, 'utf8');
-
-// Send results
-panel.webview.postMessage({
-  type: 'results',
-  data: analysisResults
-});
-```
-
-## Next Steps (Hour 4-22)
-
-- [ ] Hour 4-10: Implement and test Health Score panel animations
-- [ ] Hour 4-10: Build and test Architecture Graph with D3.js
-- [ ] Hour 10-16: Complete Review, Docs, and Security panels
-- [ ] Hour 16-18: Polish navigation and transitions
-- [ ] Hour 18-22: Add skeleton loading states, empty states, responsive design
-
-## Dependencies
-
-- **D3.js v7**: Loaded via CDN for architecture graph
+- **D3.js v7**: Loaded via CDN for both graph views
 - **VS Code API**: `acquireVsCodeApi()` for extension communication
 
-## Notes for Team
+## 🎯 Ready for Integration
 
-- All panels are built and ready for data
-- Message protocol is defined and implemented
-- Styling matches VS Code theme automatically
-- Ready for integration with P4's extension code
-- Can be tested standalone by mocking `postMessage` events
+All webview assets are in the correct locations per `filetree.md`. The monolithic structure ensures your `getWebviewContent()` string replacement logic works immediately without additional URI mapping.
+
+**Next Steps for P4:**
+1. Copy webview files to extension
+2. Implement `getWebviewContent()` with URI replacements
+3. Send messages using the documented protocol
+4. Test with mock data first, then integrate with backend
+
+---
+
+**Made with ❤️ for IBM Bob Hackathon 2026**

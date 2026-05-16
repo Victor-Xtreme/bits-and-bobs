@@ -38,7 +38,7 @@ class Settings(BaseSettings):
             raise ValueError('watsonx_project_id appears to be a placeholder value')
         return v.strip()
     watsonx_url: str = "https://us-south.ml.cloud.ibm.com"
-    watsonx_model_id: str = "meta-llama/llama-3-1-70b-instruct"
+    watsonx_model_id: str = "granite-3-8b-instruct"
     
     # WatsonX Orchestrate Configuration
     orchestrate_api_key: str

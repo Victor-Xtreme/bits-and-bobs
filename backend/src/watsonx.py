@@ -455,36 +455,68 @@ async def generate_score(
         }
     }
     
-    prompt = f"""Calculate a health score for this codebase based on the analysis results.
+    prompt = f"""You are a code quality analyst. Given analysis from four specialized
+agents, produce an overall health scorecard for this codebase.
 
-Analysis Summary:
-{json.dumps(summary, indent=2)}
+Architecture analysis: {json.dumps(summary["architecture"], indent=2)}
+Code review findings: {json.dumps(summary["review"], indent=2)}
+Documentation coverage: {json.dumps(summary["docs"], indent=2)}
+Security analysis: {json.dumps(summary["security"], indent=2)}
 
-Generate a JSON response with the following structure:
+Score the codebase from 0 to 100:
+- Code Quality (30 points): fewer HIGH/CRITICAL review findings = more points
+  * Start with 30 points
+  * Deduct 5 points per CRITICAL finding
+  * Deduct 2 points per HIGH finding
+  * Minimum: 0 points
+  
+- Security (30 points): fewer security issues = more points
+  * Start with 30 points
+  * Deduct 5 points per CRITICAL security issue
+  * Deduct 2 points per HIGH security issue
+  * Minimum: 0 points
+  
+- Documentation (20 points): better coverage = more points
+  * 20 points: All functions documented with tests
+  * 15 points: Most functions documented
+  * 10 points: Some documentation
+  * 5 points: Minimal documentation
+  * 0 points: No documentation
+  
+- Architecture (20 points): cleaner, clearer structure = more points
+  * 20 points: Clear, well-organized structure
+  * 15 points: Good structure with minor issues
+  * 10 points: Acceptable structure
+  * 5 points: Poor organization
+  * 0 points: Chaotic structure
+
+Return ONLY valid JSON. No markdown, no explanation:
 {{
-  "score": 75,
+  "score": number,
   "grade": "A|B|C|D|F",
   "breakdown": {{
-    "quality": 80,
-    "security": 70,
-    "documentation": 75,
-    "architecture": 80
+    "quality": number,
+    "security": number,
+    "documentation": number,
+    "architecture": number
   }},
-  "summary": "Overall assessment summary",
+  "summary": "2-3 sentences describing this codebase honestly",
   "top_priorities": [
-    "Priority 1",
-    "Priority 2",
-    "Priority 3"
+    "Most important thing to fix first",
+    "Second most important",
+    "Third most important"
   ]
 }}
 
-Scoring guidelines:
-- Score range: 0-100
-- Grade: A (90-100), B (80-89), C (70-79), D (60-69), F (<60)
-- Each breakdown category: 0-100
-- Top priorities: 3-5 most important improvements
+Grade mapping:
+- A: 90-100 (Excellent)
+- B: 80-89 (Good)
+- C: 70-79 (Fair)
+- D: 60-69 (Poor)
+- F: 0-59 (Failing)
 
-Return ONLY valid JSON, no additional text."""
+IMPORTANT: Be honest and specific in your summary. Avoid generic phrases.
+Prioritize fixes by impact - what will improve the codebase most."""
 
     response = await _call_watsonx(prompt)
     data = _parse_json_response(response)
