@@ -45,7 +45,7 @@ body {
 /* Tab Navigation */
 .tab-bar {
     display: flex;
-    background-color: var(--vscode-editorGroupHeader-tabsBackground);
+    background-color: #000000;
     border-bottom: 1px solid var(--vscode-editorGroup-border);
     padding: 0;
     position: sticky;
