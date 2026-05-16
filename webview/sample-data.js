@@ -17,27 +17,27 @@ const sampleAnalysisData = {
     
     architecture: {
         nodes: [
-            { id: 'main', name: 'main.js', type: 'entry', description: 'Application entry point - initializes server and routes' },
-            { id: 'api', name: 'api.js', type: 'service', description: 'REST API handler with Express routes' },
-            { id: 'auth', name: 'auth.js', type: 'service', description: 'Authentication and authorization logic' },
-            { id: 'db', name: 'database.js', type: 'service', description: 'Database connection and query builder' },
-            { id: 'utils', name: 'utils.js', type: 'util', description: 'Common utility functions' },
-            { id: 'logger', name: 'logger.js', type: 'util', description: 'Logging utility with Winston' },
-            { id: 'config', name: 'config.js', type: 'config', description: 'Application configuration loader' },
-            { id: 'test-api', name: 'api.test.js', type: 'test', description: 'API endpoint tests' },
-            { id: 'test-auth', name: 'auth.test.js', type: 'test', description: 'Authentication tests' }
+            { id: 'main', label: 'main.js', name: 'main.js', type: 'entry', description: 'Application entry point - initializes server and routes' },
+            { id: 'api', label: 'api.js', name: 'api.js', type: 'service', description: 'REST API handler with Express routes' },
+            { id: 'auth', label: 'auth.js', name: 'auth.js', type: 'service', description: 'Authentication and authorization logic' },
+            { id: 'db', label: 'database.js', name: 'database.js', type: 'service', description: 'Database connection and query builder' },
+            { id: 'utils', label: 'utils.js', name: 'utils.js', type: 'util', description: 'Common utility functions' },
+            { id: 'logger', label: 'logger.js', name: 'logger.js', type: 'util', description: 'Logging utility with Winston' },
+            { id: 'config', label: 'config.js', name: 'config.js', type: 'config', description: 'Application configuration loader' },
+            { id: 'test-api', label: 'api.test.js', name: 'api.test.js', type: 'test', description: 'API endpoint tests' },
+            { id: 'test-auth', label: 'auth.test.js', name: 'auth.test.js', type: 'test', description: 'Authentication tests' }
         ],
         edges: [
-            { source: 'main', target: 'api' },
-            { source: 'main', target: 'config' },
-            { source: 'api', target: 'auth' },
-            { source: 'api', target: 'db' },
-            { source: 'api', target: 'logger' },
-            { source: 'auth', target: 'db' },
-            { source: 'auth', target: 'utils' },
-            { source: 'db', target: 'config' },
-            { source: 'test-api', target: 'api' },
-            { source: 'test-auth', target: 'auth' }
+            { source: 'main', target: 'api', relationship: 'imports' },
+            { source: 'main', target: 'config', relationship: 'imports' },
+            { source: 'api', target: 'auth', relationship: 'calls' },
+            { source: 'api', target: 'db', relationship: 'imports' },
+            { source: 'api', target: 'logger', relationship: 'imports' },
+            { source: 'auth', target: 'db', relationship: 'calls' },
+            { source: 'auth', target: 'utils', relationship: 'imports' },
+            { source: 'db', target: 'config', relationship: 'imports' },
+            { source: 'test-api', target: 'api', relationship: 'imports' },
+            { source: 'test-auth', target: 'auth', relationship: 'imports' }
         ]
     },
     

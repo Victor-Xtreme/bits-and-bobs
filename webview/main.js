@@ -83,10 +83,50 @@ function initializeEventListeners() {
     const zoomIn = document.getElementById('zoomIn');
     const zoomOut = document.getElementById('zoomOut');
     const resetZoom = document.getElementById('resetZoom');
+    const depthSlider = document.getElementById('depthSlider');
+    const depthValue = document.getElementById('depthValue');
+    const networkView = document.getElementById('networkView');
+    const treeView = document.getElementById('treeView');
     
     if (zoomIn) zoomIn.addEventListener('click', () => zoomGraph(1.2));
     if (zoomOut) zoomOut.addEventListener('click', () => zoomGraph(0.8));
     if (resetZoom) resetZoom.addEventListener('click', () => resetGraphZoom());
+    
+    if (depthSlider && depthValue) {
+        depthSlider.addEventListener('input', (e) => {
+            const newDepth = parseInt(e.target.value);
+            depthValue.textContent = newDepth;
+            currentDepth = newDepth;
+            if (currentArchitecture && currentSelectedNode && currentGraphView === 'tree') {
+                renderDependencyTree(currentSelectedNode, currentDepth);
+            }
+        });
+    }
+    
+    // View toggle buttons
+    if (networkView) {
+        networkView.addEventListener('click', () => {
+            currentGraphView = 'network';
+            networkView.classList.add('active');
+            treeView.classList.remove('active');
+            document.getElementById('depthControl').style.display = 'none';
+            if (currentArchitecture) {
+                renderNetworkGraph(currentArchitecture);
+            }
+        });
+    }
+    
+    if (treeView) {
+        treeView.addEventListener('click', () => {
+            currentGraphView = 'tree';
+            treeView.classList.add('active');
+            networkView.classList.remove('active');
+            document.getElementById('depthControl').style.display = 'flex';
+            if (currentArchitecture && currentSelectedNode) {
+                renderDependencyTree(currentSelectedNode, currentDepth);
+            }
+        });
+    }
 }
 
 // Show loading state
@@ -268,7 +308,11 @@ function animateScore(start, end, duration, element) {
     requestAnimationFrame(update);
 }
 
-// Render Architecture Panel
+// Render Architecture Panel - Support both Network and Tree views
+let currentArchitecture = null;
+let currentSelectedNode = null;
+let currentDepth = 1;
+let currentGraphView = 'tree'; // 'network' or 'tree'
 let graphSimulation = null;
 
 function renderArchitecturePanel(architecture) {
@@ -290,15 +334,45 @@ function renderArchitecturePanel(architecture) {
             return;
         }
         
-        container.innerHTML = ''; // Clear previous graph
+        // Store architecture data
+        currentArchitecture = architecture;
         
-        // Get dimensions with fallback
-        const width = container.clientWidth || 1000;
-        const height = container.clientHeight || 600;
-        
-        if (width === 0 || height === 0) {
-            console.warn('Container has zero dimensions, graph may not render correctly');
+        // Select first entry node or first node as default
+        if (!currentSelectedNode) {
+            const entryNode = architecture.nodes.find(n => n.type === 'entry');
+            currentSelectedNode = entryNode ? entryNode.id : architecture.nodes[0].id;
         }
+        
+        // Render based on current view
+        if (currentGraphView === 'network') {
+            renderNetworkGraph(architecture);
+        } else {
+            renderDependencyTree(currentSelectedNode, currentDepth);
+        }
+        
+    } catch (error) {
+        console.error('Error rendering architecture graph:', error);
+        const container = document.getElementById('graphContainer');
+        if (container) {
+            container.innerHTML = `
+                <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--vscode-errorForeground);">
+                    <div style="text-align: center;">
+                        <p style="font-size: 18px; margin-bottom: 8px;">⚠️ Failed to render architecture graph</p>
+                        <p style="font-size: 14px; color: var(--vscode-descriptionForeground);">${error.message}</p>
+                    </div>
+                </div>
+            `;
+        }
+    }
+}
+
+// Render Network Graph (Original force-directed layout)
+function renderNetworkGraph(architecture) {
+    const container = document.getElementById('graphContainer');
+    container.innerHTML = '';
+    
+    const width = container.clientWidth || 1000;
+    const height = container.clientHeight || 600;
     
     // Create SVG
     const svg = d3.select('#graphContainer')
@@ -366,7 +440,7 @@ function renderArchitecturePanel(architecture) {
         .selectAll('text')
         .data(architecture.nodes)
         .join('text')
-        .text(d => d.name)
+        .text(d => d.label || d.name)
         .attr('font-size', 10)
         .attr('dx', 15)
         .attr('dy', 4)
@@ -377,7 +451,7 @@ function renderArchitecturePanel(architecture) {
     
     node.on('mouseover', (event, d) => {
         tooltip.innerHTML = `
-            <strong>${d.name}</strong><br>
+            <strong>${d.label || d.name}</strong><br>
             <small>Type: ${d.type}</small><br>
             ${d.description ? `<p style="margin-top: 8px; font-size: 12px;">${d.description}</p>` : ''}
         `;
@@ -425,22 +499,255 @@ function renderArchitecturePanel(architecture) {
         d.fx = null;
         d.fy = null;
     }
+}
+
+// Build subgraph for selected node
+function buildSubgraph(nodeId, allNodes, allEdges, depth) {
+    const visited = new Set([nodeId]);
+    const dependents = [];
+    const dependencies = [];
+    const queue = [[nodeId, 0]];
     
-    } catch (error) {
-        console.error('Error rendering architecture graph:', error);
-        // Show error message in the graph container
-        const container = document.getElementById('graphContainer');
-        if (container) {
-            container.innerHTML = `
-                <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--vscode-errorForeground);">
-                    <div style="text-align: center;">
-                        <p style="font-size: 18px; margin-bottom: 8px;">⚠️ Failed to render architecture graph</p>
-                        <p style="font-size: 14px; color: var(--vscode-descriptionForeground);">${error.message}</p>
-                    </div>
-                </div>
-            `;
+    while (queue.length > 0) {
+        const [current, d] = queue.shift();
+        if (d >= depth) continue;
+        
+        // Find dependents (nodes that depend on current)
+        for (const edge of allEdges) {
+            if (edge.target === current && !visited.has(edge.source)) {
+                visited.add(edge.source);
+                const node = allNodes.find(n => n.id === edge.source);
+                if (node) {
+                    dependents.push(node);
+                    queue.push([edge.source, d + 1]);
+                }
+            }
+        }
+        
+        // Find dependencies (nodes that current depends on)
+        for (const edge of allEdges) {
+            if (edge.source === current && !visited.has(edge.target)) {
+                visited.add(edge.target);
+                const node = allNodes.find(n => n.id === edge.target);
+                if (node) {
+                    dependencies.push(node);
+                    queue.push([edge.target, d + 1]);
+                }
+            }
         }
     }
+    
+    // Filter edges to only include those between visible nodes
+    const visibleEdges = allEdges.filter(e =>
+        visited.has(e.source) && visited.has(e.target)
+    );
+    
+    return {
+        selected_node: allNodes.find(n => n.id === nodeId),
+        dependents,
+        dependencies,
+        edges: visibleEdges,
+        depth
+    };
+}
+
+// Render the dependency tree
+function renderDependencyTree(nodeId, depth) {
+    const container = document.getElementById('graphContainer');
+    container.innerHTML = '';
+    
+    const width = container.clientWidth || 1000;
+    const height = container.clientHeight || 600;
+    
+    // Build subgraph
+    const subgraph = buildSubgraph(
+        nodeId,
+        currentArchitecture.nodes,
+        currentArchitecture.edges,
+        depth
+    );
+    
+    if (!subgraph.selected_node) {
+        console.error('Selected node not found:', nodeId);
+        return;
+    }
+    
+    // Create SVG
+    const svg = d3.select('#graphContainer')
+        .append('svg')
+        .attr('width', width)
+        .attr('height', height);
+    
+    const g = svg.append('g');
+    
+    // Add zoom behavior
+    const zoom = d3.zoom()
+        .scaleExtent([0.1, 4])
+        .on('zoom', (event) => {
+            g.attr('transform', event.transform);
+        });
+    
+    svg.call(zoom);
+    
+    // Store zoom for controls
+    container._zoom = zoom;
+    container._svg = svg;
+    
+    // Color mapping based on NodeType
+    const colorMap = {
+        entry: '#ef4444',      // coral/red
+        service: '#3b82f6',    // blue
+        util: '#14b8a6',       // teal
+        config: '#f59e0b',     // amber
+        test: '#6b7280'        // gray
+    };
+    
+    // Edge relationship line styles
+    const edgeStyleMap = {
+        imports: { dasharray: 'none', opacity: 0.8 },
+        extends: { dasharray: '5,5', opacity: 0.7 },
+        calls: { dasharray: '2,3', opacity: 0.6 }
+    };
+    
+    // Layout configuration
+    const nodeRadius = 20;
+    const verticalSpacing = 100;
+    const horizontalSpacing = 150;
+    
+    // Position nodes
+    const allVisibleNodes = [
+        ...subgraph.dependents,
+        subgraph.selected_node,
+        ...subgraph.dependencies
+    ];
+    
+    // Calculate positions
+    const centerX = width / 2;
+    const centerY = height / 2;
+    
+    // Position selected node at center
+    subgraph.selected_node.x = centerX;
+    subgraph.selected_node.y = centerY;
+    
+    // Position dependents above (in rows)
+    const dependentsPerRow = Math.ceil(Math.sqrt(subgraph.dependents.length));
+    subgraph.dependents.forEach((node, i) => {
+        const row = Math.floor(i / dependentsPerRow);
+        const col = i % dependentsPerRow;
+        const rowWidth = Math.min(dependentsPerRow, subgraph.dependents.length - row * dependentsPerRow);
+        const offsetX = (col - (rowWidth - 1) / 2) * horizontalSpacing;
+        
+        node.x = centerX + offsetX;
+        node.y = centerY - verticalSpacing * (row + 1);
+    });
+    
+    // Position dependencies below (in rows)
+    const dependenciesPerRow = Math.ceil(Math.sqrt(subgraph.dependencies.length));
+    subgraph.dependencies.forEach((node, i) => {
+        const row = Math.floor(i / dependenciesPerRow);
+        const col = i % dependenciesPerRow;
+        const rowWidth = Math.min(dependenciesPerRow, subgraph.dependencies.length - row * dependenciesPerRow);
+        const offsetX = (col - (rowWidth - 1) / 2) * horizontalSpacing;
+        
+        node.x = centerX + offsetX;
+        node.y = centerY + verticalSpacing * (row + 1);
+    });
+    
+    // Create arrow markers for edges
+    svg.append('defs').selectAll('marker')
+        .data(['arrow'])
+        .join('marker')
+        .attr('id', 'arrow')
+        .attr('viewBox', '0 -5 10 10')
+        .attr('refX', 25)
+        .attr('refY', 0)
+        .attr('markerWidth', 6)
+        .attr('markerHeight', 6)
+        .attr('orient', 'auto')
+        .append('path')
+        .attr('d', 'M0,-5L10,0L0,5')
+        .attr('fill', '#6b7280');
+    
+    // Create edges
+    const link = g.append('g')
+        .selectAll('line')
+        .data(subgraph.edges)
+        .join('line')
+        .attr('x1', d => {
+            const source = allVisibleNodes.find(n => n.id === d.source);
+            return source ? source.x : 0;
+        })
+        .attr('y1', d => {
+            const source = allVisibleNodes.find(n => n.id === d.source);
+            return source ? source.y : 0;
+        })
+        .attr('x2', d => {
+            const target = allVisibleNodes.find(n => n.id === d.target);
+            return target ? target.x : 0;
+        })
+        .attr('y2', d => {
+            const target = allVisibleNodes.find(n => n.id === d.target);
+            return target ? target.y : 0;
+        })
+        .attr('stroke', '#6b7280')
+        .attr('stroke-width', 2)
+        .attr('stroke-opacity', d => {
+            const style = edgeStyleMap[d.relationship] || edgeStyleMap.imports;
+            return style.opacity;
+        })
+        .attr('stroke-dasharray', d => {
+            const style = edgeStyleMap[d.relationship] || edgeStyleMap.imports;
+            return style.dasharray;
+        })
+        .attr('marker-end', 'url(#arrow)');
+    
+    // Create nodes
+    const node = g.append('g')
+        .selectAll('g')
+        .data(allVisibleNodes)
+        .join('g')
+        .attr('transform', d => `translate(${d.x},${d.y})`)
+        .style('cursor', 'pointer')
+        .on('click', (event, d) => {
+            // Re-root tree at clicked node
+            currentSelectedNode = d.id;
+            renderDependencyTree(d.id, currentDepth);
+        });
+    
+    // Add circles to nodes
+    node.append('circle')
+        .attr('r', d => d.id === nodeId ? nodeRadius * 1.2 : nodeRadius)
+        .attr('fill', d => colorMap[d.type] || '#6b7280')
+        .attr('stroke', d => d.id === nodeId ? '#fff' : 'none')
+        .attr('stroke-width', d => d.id === nodeId ? 3 : 0);
+    
+    // Add labels
+    node.append('text')
+        .text(d => d.label || d.name)
+        .attr('font-size', 11)
+        .attr('dy', nodeRadius + 15)
+        .attr('text-anchor', 'middle')
+        .attr('fill', 'var(--vscode-foreground)')
+        .style('pointer-events', 'none');
+    
+    // Tooltip
+    const tooltip = document.getElementById('nodeTooltip');
+    
+    node.on('mouseover', (event, d) => {
+        tooltip.innerHTML = `
+            <strong>${d.label || d.name}</strong><br>
+            <small>Type: ${d.type}</small><br>
+            ${d.description ? `<p style="margin-top: 8px; font-size: 12px;">${d.description}</p>` : ''}
+        `;
+        tooltip.classList.remove('hidden');
+    })
+    .on('mousemove', (event) => {
+        tooltip.style.left = (event.pageX + 10) + 'px';
+        tooltip.style.top = (event.pageY + 10) + 'px';
+    })
+    .on('mouseout', () => {
+        tooltip.classList.add('hidden');
+    });
 }
 
 // Graph zoom controls

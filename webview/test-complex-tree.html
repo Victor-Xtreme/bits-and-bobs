@@ -3,18 +3,58 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' https://cdn.jsdelivr.net; script-src 'unsafe-inline' https://cdn.jsdelivr.net; img-src https: data:;">
-    <title>RepoSense Analysis</title>
+    <title>Complex Dependency Tree Test</title>
     <link rel="stylesheet" href="styles.css">
+    <style>
+        body {
+            background-color: #1e1e1e;
+            color: #cccccc;
+        }
+        .test-info {
+            position: fixed;
+            top: 60px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            max-width: 300px;
+            z-index: 1000;
+        }
+        .test-info h3 {
+            margin: 0 0 8px 0;
+            color: #3b82f6;
+        }
+        .test-info ul {
+            margin: 8px 0;
+            padding-left: 20px;
+        }
+        .test-info li {
+            margin: 4px 0;
+        }
+    </style>
 </head>
 <body>
+    <!-- Test Info Panel -->
+    <div class="test-info">
+        <h3>🧪 Complex Test Data</h3>
+        <ul>
+            <li><strong>31 nodes</strong> (2 entry, 19 services, 4 utils, 3 configs, 5 tests)</li>
+            <li><strong>68 edges</strong> with varied relationships</li>
+            <li><strong>Multi-level dependencies</strong> up to 5 levels deep</li>
+        </ul>
+        <p style="margin-top: 12px; font-size: 11px; color: #888;">
+            Try clicking different nodes and adjusting depth to explore the complex dependency graph.
+        </p>
+    </div>
+
     <!-- Navigation Tabs -->
     <nav class="tab-bar">
-        <button class="tab-button active" data-panel="health">
+        <button class="tab-button" data-panel="health">
             <span class="tab-icon">📊</span>
             <span class="tab-label">Health Score</span>
         </button>
-        <button class="tab-button" data-panel="architecture">
+        <button class="tab-button active" data-panel="architecture">
             <span class="tab-icon">🏗️</span>
             <span class="tab-label">Architecture</span>
         </button>
@@ -37,7 +77,7 @@
     <!-- Main Content Area -->
     <main class="content-area">
         <!-- Loading State -->
-        <div id="loadingState" class="state-panel">
+        <div id="loadingState" class="state-panel hidden">
             <div class="loading-container">
                 <div class="pulse-loader"></div>
                 <h2>Analyzing Repository...</h2>
@@ -80,20 +120,16 @@
         </div>
 
         <!-- Architecture Graph Panel -->
-        <div id="architecturePanel" class="panel hidden">
+        <div id="architecturePanel" class="panel">
             <div class="architecture-container">
                 <div class="graph-controls">
-                    <div class="view-toggle">
-                        <button id="networkView" class="view-button">🌐 Network</button>
-                        <button id="treeView" class="view-button active">🌳 Tree</button>
-                    </div>
                     <button id="zoomIn" class="control-button">🔍+</button>
                     <button id="zoomOut" class="control-button">🔍-</button>
                     <button id="resetZoom" class="control-button">⟲</button>
-                    <div class="depth-control" id="depthControl">
+                    <div class="depth-control">
                         <label for="depthSlider">Depth:</label>
-                        <input type="range" id="depthSlider" min="1" max="5" value="1" step="1">
-                        <span id="depthValue">1</span>
+                        <input type="range" id="depthSlider" min="1" max="5" value="2" step="1">
+                        <span id="depthValue">2</span>
                     </div>
                 </div>
                 <div id="graphContainer" class="graph-container"></div>
@@ -149,7 +185,39 @@
     <!-- Load D3.js for architecture graph -->
     <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
     
+    <!-- Complex Sample Data -->
+    <script src="sample-data-complex.js"></script>
+    
     <!-- Main JavaScript -->
     <script src="main.js"></script>
+    
+    <!-- Auto-load test data -->
+    <script>
+        // Simulate VS Code API
+        window.acquireVsCodeApi = function() {
+            return {
+                postMessage: function(msg) {
+                    console.log('VS Code message:', msg);
+                },
+                getState: function() {
+                    return null;
+                },
+                setState: function(state) {
+                    console.log('State saved:', state);
+                }
+            };
+        };
+        
+        // Auto-load complex sample data after page loads
+        window.addEventListener('load', () => {
+            console.log('Loading complex test data...');
+            setTimeout(() => {
+                window.postMessage({ 
+                    type: 'results', 
+                    data: complexAnalysisData 
+                }, '*');
+            }, 500);
+        });
+    </script>
 </body>
 </html>
