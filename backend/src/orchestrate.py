@@ -3,7 +3,6 @@ RepoSense Orchestration Logic
 Coordinates the entire analysis pipeline
 """
 
-import asyncio
 import logging
 from typing import Optional, Callable, Any, Awaitable
 
@@ -26,6 +25,8 @@ from .watsonx import (
     generate_security,
     generate_score
 )
+
+from .config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -70,16 +71,29 @@ async def _run_stage_with_error_handling(
             stage=stage_name
         )
         set_job_error(job_id, error)
+        update_job_progress(job_id, step_index, StepStatus.active)  # Keep as active to show where it failed
         return None
         
     except ValueError as e:
-        logger.error(f"{stage_name} invalid JSON: {str(e)}")
-        error = AnalysisError(
-            code=ErrorCode.AGENT_INVALID_JSON,
-            message=f"Invalid JSON response: {str(e)}",
-            stage=stage_name
-        )
+        # ValueError could be from JSON parsing or other validation issues
+        # Check if it's specifically a JSON error by examining the message
+        error_msg = str(e)
+        if "json" in error_msg.lower() or "parse" in error_msg.lower():
+            logger.error(f"{stage_name} invalid JSON: {error_msg}")
+            error = AnalysisError(
+                code=ErrorCode.AGENT_INVALID_JSON,
+                message=f"Invalid JSON response: {error_msg}",
+                stage=stage_name
+            )
+        else:
+            logger.error(f"{stage_name} validation error: {error_msg}")
+            error = AnalysisError(
+                code=ErrorCode.UNKNOWN,
+                message=f"Validation error: {error_msg}",
+                stage=stage_name
+            )
         set_job_error(job_id, error)
+        update_job_progress(job_id, step_index, StepStatus.active)  # Keep as active to show where it failed
         return None
         
     except Exception as e:
@@ -90,6 +104,7 @@ async def _run_stage_with_error_handling(
             stage=stage_name
         )
         set_job_error(job_id, error)
+        update_job_progress(job_id, step_index, StepStatus.active)  # Keep as active to show where it failed
         return None
 
 
@@ -104,6 +119,44 @@ async def orchestrate_analysis(job_id: str, local_path: str) -> None:
     4. Generate documentation
     5. Generate security report
     6. Compute health score
+    
+    Args:
+        job_id: The job ID for tracking progress
+        local_path: Path to the local codebase to analyze
+    """
+    import asyncio
+    
+    # Apply overall timeout from config
+    timeout = settings.analysis_timeout
+    
+    try:
+        # Wrap the entire analysis in a timeout
+        await asyncio.wait_for(
+            _orchestrate_analysis_impl(job_id, local_path),
+            timeout=timeout
+        )
+    except asyncio.TimeoutError:
+        logger.error(f"Analysis timed out after {timeout} seconds")
+        error = AnalysisError(
+            code=ErrorCode.AGENT_TIMEOUT,
+            message=f"Overall analysis timed out after {timeout} seconds",
+            stage="Overall orchestration"
+        )
+        set_job_error(job_id, error)
+    except Exception as e:
+        # Catch-all for unexpected errors
+        logger.error(f"Unexpected error in orchestration: {str(e)}", exc_info=True)
+        error = AnalysisError(
+            code=ErrorCode.UNKNOWN,
+            message=f"Unexpected error: {str(e)}",
+            stage="Unknown"
+        )
+        set_job_error(job_id, error)
+
+
+async def _orchestrate_analysis_impl(job_id: str, local_path: str) -> None:
+    """
+    Internal implementation of the orchestration logic.
     
     Args:
         job_id: The job ID for tracking progress
@@ -182,13 +235,7 @@ async def orchestrate_analysis(job_id: str, local_path: str) -> None:
         set_job_result(job_id, result)
         
     except Exception as e:
-        # Catch-all for unexpected errors
-        logger.error(f"Unexpected error in orchestration: {str(e)}", exc_info=True)
-        error = AnalysisError(
-            code=ErrorCode.UNKNOWN,
-            message=f"Unexpected error: {str(e)}",
-            stage="Unknown"
-        )
-        set_job_error(job_id, error)
+        # Re-raise to be caught by outer handler
+        raise
 
 # Made with Bob

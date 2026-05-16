@@ -3,8 +3,8 @@ RepoSense Configuration Management
 Handles environment variables and application settings
 """
 
-from typing import Optional
-from pydantic import field_validator
+from pathlib import Path
+from pydantic import field_validator, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -38,15 +38,15 @@ class Settings(BaseSettings):
             raise ValueError('watsonx_project_id appears to be a placeholder value')
         return v.strip()
     watsonx_url: str = "https://us-south.ml.cloud.ibm.com"
-    watsonx_model_id: str = "meta-llama/llama-3-1-70b-instruct"
+    watsonx_model_id: str = "granite-3-8b-instruct"
     
     # API Timeouts (in seconds)
-    watsonx_timeout: int = 120
-    analysis_timeout: int = 600
+    watsonx_timeout: int = Field(default=120, gt=0, le=3600)
+    analysis_timeout: int = Field(default=600, gt=0, le=7200)
     
     # File Processing Limits
-    max_file_size_mb: int = 10
-    max_files_per_analysis: int = 1000
+    max_file_size_mb: int = Field(default=10, gt=0, le=1000)
+    max_files_per_analysis: int = Field(default=1000, gt=0, le=100000)
     
     # Supported Languages
     supported_languages: str = "python,javascript,typescript,java,go,rust"
@@ -55,14 +55,24 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000,http://localhost:5173"
     
     # Job Management
-    job_retention_hours: int = 24
-    max_concurrent_jobs: int = 10
+    job_retention_hours: int = Field(default=24, gt=0, le=720)
+    max_concurrent_jobs: int = Field(default=10, gt=0, le=100)
     
     # Logging
     log_level: str = "INFO"
     
+    @field_validator('log_level')
+    @classmethod
+    def validate_log_level(cls, v: str) -> str:
+        """Validate that log level is valid"""
+        valid_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+        v_upper = v.upper()
+        if v_upper not in valid_levels:
+            raise ValueError(f'log_level must be one of {valid_levels}')
+        return v_upper
+    
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(Path(__file__).parent.parent / ".env"),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore"
@@ -70,11 +80,11 @@ class Settings(BaseSettings):
     
     def get_supported_languages_list(self) -> list[str]:
         """Get supported languages as a list"""
-        return [lang.strip() for lang in self.supported_languages.split(",")]
+        return [lang.strip() for lang in self.supported_languages.split(",") if lang.strip()]
     
     def get_cors_origins_list(self) -> list[str]:
         """Get CORS origins as a list"""
-        return [origin.strip() for origin in self.cors_origins.split(",")]
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
     
     def get_max_file_size_bytes(self) -> int:
         """Get max file size in bytes"""
@@ -82,7 +92,10 @@ class Settings(BaseSettings):
 
 
 # Global settings instance
-settings = Settings()
+# Note: This will fail at import time if required env vars are missing.
+# For testing or tooling that needs to import without loading config,
+# consider mocking or setting dummy env vars.
+settings = Settings()  # type: ignore[call-arg]
 
 
 # Constants

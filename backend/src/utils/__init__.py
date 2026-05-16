@@ -26,8 +26,8 @@ from .logger import (
     setup_logger,
     get_logger,
     set_log_level,
-    add_file_handler,
-    app_logger
+    log_exception,
+    get_default_logger
 )
 
 # Define what's available when using "from utils import *"
@@ -48,8 +48,8 @@ __all__ = [
     'setup_logger',
     'get_logger',
     'set_log_level',
-    'add_file_handler',
-    'app_logger'
+    'log_exception',
+    'get_default_logger'
 ]
 
 # Package metadata
