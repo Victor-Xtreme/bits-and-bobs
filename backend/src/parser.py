@@ -221,7 +221,7 @@ async def parse_file(file_path: Path, base_path: Path) -> ParsedFile:
         )
     
     # Parse based on language
-    if language == 'python':
+    if language in ['python', 'py']:
         return await parse_python_file(rel_path, content)
     elif language in ['javascript', 'typescript', 'js', 'ts']:
         return await parse_javascript_file(rel_path, content, language)

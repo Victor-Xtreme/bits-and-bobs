@@ -11,11 +11,12 @@ from typing import Optional, Dict, List
 from .models import (
     ProgressStep,
     StepStatus,
-    JobStatusEnum,
     JobStatus,
     AnalysisResult,
     AnalysisError,
-    ErrorCode
+    ErrorCode,
+    ApiResponse,
+    PayloadType
 )
 from .config import settings, PROGRESS_STEPS
 
@@ -27,7 +28,7 @@ class JobState:
     def __init__(self, job_id: str):
         self.job_id = job_id
         self.created_at = datetime.now(timezone.utc)
-        self.status = JobStatusEnum.RUNNING
+        self.status = JobStatus.RUNNING
         self.progress: List[ProgressStep] = []
         self.result: Optional[AnalysisResult] = None
         self.error: Optional[AnalysisError] = None
@@ -128,7 +129,7 @@ def update_job_progress(
             return
         
         # Check if job is still running before updating
-        if job.status != JobStatusEnum.RUNNING:
+        if job.status != JobStatus.RUNNING:
             return
         
         # Keep reference to job while we have the lock
@@ -168,7 +169,7 @@ def set_job_result(job_id: str, result: AnalysisResult) -> None:
             return
     
     with job._lock:
-        job.status = JobStatusEnum.COMPLETED
+        job.status = JobStatus.COMPLETED
         job.result = result
         
         # Mark all steps as done
@@ -191,7 +192,7 @@ def set_job_error(job_id: str, error: AnalysisError) -> None:
         job_ref = job
     
     with job_ref._lock:
-        job_ref.status = JobStatusEnum.FAILED
+        job_ref.status = JobStatus.FAILED
         job_ref.error = error
         
         # Leave active step as-is to show where failure occurred
@@ -212,7 +213,7 @@ def cleanup_old_jobs() -> int:
     with _jobs_lock:
         job_ids_to_remove = [
             job_id for job_id, job in _jobs.items()
-            if job.created_at < cutoff_time and job.status != JobStatusEnum.RUNNING
+            if job.created_at < cutoff_time and job.status != JobStatus.RUNNING
         ]
         
         for job_id in job_ids_to_remove:
@@ -230,29 +231,39 @@ def get_active_job_count() -> int:
         int: Number of active jobs
     """
     with _jobs_lock:
-        return sum(1 for job in _jobs.values() if job.status == JobStatusEnum.RUNNING)
+        return sum(1 for job in _jobs.values() if job.status == JobStatus.RUNNING)
 
 
-def get_job_status(job_id: str) -> Optional[JobStatus]:
+def get_job_status(job_id: str) -> Optional[ApiResponse]:
     """
-    Get job status as API model.
+    Get job status as API response.
     
     Args:
         job_id: The job ID
         
     Returns:
-        JobStatus model if found, None otherwise
+        ApiResponse if found, None otherwise
     """
     job = get_job(job_id)
     if job is None:
         return None
     
-    return JobStatus(
+    # Determine payload type and content
+    if job.status == JobStatus.COMPLETED and job.result:
+        payload_type = PayloadType.result
+        payload = job.result
+    elif job.status == JobStatus.FAILED and job.error:
+        payload_type = PayloadType.error
+        payload = job.error
+    else:
+        payload_type = PayloadType.request
+        payload = None
+    
+    return ApiResponse(
+        type=payload_type,
         job_id=job.job_id,
-        status=job.status.value,
         progress=job.progress,
-        result=job.result,
-        error=job.error
+        payload=payload
     )
 
 # Made with Bob

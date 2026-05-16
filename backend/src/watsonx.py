@@ -8,8 +8,14 @@ import asyncio
 import logging
 from typing import Any, Dict
 
-from ibm_watsonx_ai.foundation_models import Model
-from ibm_watsonx_ai.metanames import GenTextParamsMetaNames as GenParams
+try:
+    from ibm_watsonx_ai.foundation_models import Model
+    from ibm_watsonx_ai.metanames import GenTextParamsMetaNames as GenParams
+    _WATSONX_AVAILABLE = True
+except ImportError:
+    _WATSONX_AVAILABLE = False
+    Model = None  # type: ignore
+    GenParams = None  # type: ignore
 
 from .models import (
     ParsedCodebase,
@@ -49,13 +55,18 @@ MAX_MODERNIZATION_ITEMS = 5
 logger = logging.getLogger(__name__)
 
 
-def _get_watsonx_model() -> Model:
+def _get_watsonx_model():
     """
     Create and return a WatsonX Model instance.
-    
+
     Returns:
         Configured Model instance
     """
+    if not _WATSONX_AVAILABLE:
+        raise ImportError(
+            "ibm_watsonx_ai is not available on this Python version. "
+            "Install a compatible version or use Python 3.11-3.13."
+        )
     credentials = {
         "url": settings.watsonx_url,
         "apikey": settings.watsonx_api_key
