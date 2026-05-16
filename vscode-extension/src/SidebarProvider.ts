@@ -1,15 +1,137 @@
 import * as vscode from 'vscode';
 import fetch from 'node-fetch';
+import { getConfig } from './config';
+
+// Backend API Models (matching models.py)
+type PayloadType = 'request' | 'result' | 'error';
+type StepStatus = 'done' | 'active' | 'pending';
+type Severity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+type NodeType = 'entry' | 'service' | 'util' | 'config' | 'test';
+type EdgeRelationship = 'imports' | 'extends' | 'calls';
+type Effort = 'LOW' | 'MEDIUM' | 'HIGH';
+type Grade = 'A' | 'B' | 'C' | 'D' | 'F';
+type ErrorCode = 'PARSE_FAILED' | 'AGENT_TIMEOUT' | 'AGENT_INVALID_JSON' | 'WATSONX_UNAVAILABLE' | 'UNKNOWN';
+
+interface ProgressStep {
+    name: string;
+    status: StepStatus;
+    files_processed?: number;
+    files_total?: number;
+    current_file?: string;
+}
+
+interface GraphNode {
+    id: string;
+    label: string;
+    type: NodeType;
+    description: string;
+}
+
+interface GraphEdge {
+    source: string;
+    target: string;
+    relationship: EdgeRelationship;
+}
+
+interface ArchitectureGraph {
+    nodes: GraphNode[];
+    edges: GraphEdge[];
+}
+
+interface CodeReviewFinding {
+    file: string;
+    line: number;
+    severity: Severity;
+    issue: string;
+    suggestion: string;
+}
+
+interface CodeReview {
+    findings: CodeReviewFinding[];
+}
+
+interface DocParam {
+    name: string;
+    type: string;
+    description: string;
+}
+
+interface DocEntry {
+    function_name: string;
+    description: string;
+    params: DocParam[];
+    returns: string;
+    example: string;
+}
+
+interface TestCase {
+    description: string;
+    input: string;
+    expected: string;
+}
+
+interface TestEntry {
+    function_name: string;
+    test_cases: TestCase[];
+}
+
+interface Documentation {
+    docs: DocEntry[];
+    tests: TestEntry[];
+}
+
+interface SecurityIssue {
+    issue: string;
+    severity: Severity;
+    file: string;
+    fix: string;
+}
+
+interface ModernizationItem {
+    pattern: string;
+    suggestion: string;
+    effort: Effort;
+}
+
+interface SecurityReport {
+    security: SecurityIssue[];
+    modernization: ModernizationItem[];
+}
+
+interface ScoreBreakdown {
+    quality: number;
+    security: number;
+    documentation: number;
+    architecture: number;
+}
+
+interface HealthScore {
+    score: number;
+    grade: Grade;
+    breakdown: ScoreBreakdown;
+    summary: string;
+    top_priorities: string[];
+}
 
 interface AnalysisResult {
+    score: HealthScore;
+    architecture: ArchitectureGraph;
+    review: CodeReview;
+    docs: Documentation;
+    security: SecurityReport;
+}
+
+interface AnalysisError {
+    code: ErrorCode;
+    message: string;
+    stage: string;
+}
+
+interface ApiResponse {
+    type: PayloadType;
     job_id: string;
-    status: string;
-    progress?: {
-        architect?: boolean;
-        [key: string]: boolean | undefined;
-    };
-    health_score?: number;
-    error?: string;
+    progress: ProgressStep[];
+    payload?: AnalysisResult | AnalysisError | null;
 }
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
@@ -67,21 +189,28 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 message: 'Starting analysis...'
             });
 
+            const config = getConfig();
+            
             // Send POST request to start analysis
-            const response = await fetch('http://localhost:8000/analyze', {
+            const response = await fetch(`${config.backendUrl}/analyze`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ local_path: workspacePath })
+                body: JSON.stringify({ local_path: workspacePath }),
+                timeout: config.requestTimeoutMs
             });
 
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                const errorText = await response.text();
+                throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
             }
 
-            const data = await response.json() as { job_id: string };
+            const data = await response.json() as ApiResponse;
             const jobId = data.job_id;
+
+            // Send initial progress update
+            this._updateProgress(data.progress);
 
             // Start polling for results
             this._startPolling(jobId);
@@ -100,10 +229,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             clearInterval(this._pollingInterval);
         }
 
-        // Poll every 3 seconds
+        const config = getConfig();
+        
+        // Poll at configured interval
         this._pollingInterval = setInterval(async () => {
             await this._checkResults(jobId);
-        }, 3000);
+        }, config.pollingIntervalMs);
 
         // Also check immediately
         this._checkResults(jobId);
@@ -115,32 +246,25 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         }
 
         try {
-            const response = await fetch(`http://localhost:8000/results/${jobId}`);
+            const config = getConfig();
+            const response = await fetch(`${config.backendUrl}/jobs/${jobId}`, {
+                timeout: config.requestTimeoutMs
+            });
             
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
 
-            const result = await response.json() as AnalysisResult;
+            const apiResponse = await response.json() as ApiResponse;
 
-            // Send progress update
-            if (result.status === 'in_progress' || result.status === 'processing') {
-                let progressMessage = 'Analyzing...';
-                if (result.progress) {
-                    const completedSteps = Object.entries(result.progress)
-                        .filter(([_, completed]) => completed)
-                        .map(([step, _]) => `✓ ${step} complete`);
-                    
-                    if (completedSteps.length > 0) {
-                        progressMessage = completedSteps.join('\n');
-                    }
-                }
+            // Update progress display
+            this._updateProgress(apiResponse.progress);
 
-                this._view.webview.postMessage({
-                    type: 'progress',
-                    message: progressMessage
-                });
-            } else if (result.status === 'completed' || result.status === 'complete') {
+            // Handle different response types
+            if (apiResponse.type === 'result' && apiResponse.payload) {
+                // Analysis completed successfully
+                const result = apiResponse.payload as AnalysisResult;
+                
                 // Stop polling
                 if (this._pollingInterval) {
                     clearInterval(this._pollingInterval);
@@ -150,9 +274,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 // Send completion message with health score
                 this._view.webview.postMessage({
                     type: 'complete',
-                    healthScore: result.health_score || 0
+                    healthScore: result.score.score,
+                    grade: result.score.grade,
+                    result: result
                 });
-            } else if (result.status === 'failed' || result.status === 'error') {
+            } else if (apiResponse.type === 'error' && apiResponse.payload) {
+                // Analysis failed
+                const error = apiResponse.payload as AnalysisError;
+                
                 // Stop polling
                 if (this._pollingInterval) {
                     clearInterval(this._pollingInterval);
@@ -161,9 +290,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
                 this._view.webview.postMessage({
                     type: 'error',
-                    message: result.error || 'Analysis failed'
+                    message: `${error.stage}: ${error.message} (${error.code})`
                 });
             }
+            // If type is 'request', continue polling (analysis still in progress)
 
         } catch (error) {
             // Stop polling on error
@@ -177,6 +307,46 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 message: `Failed to check results: ${error instanceof Error ? error.message : String(error)}`
             });
         }
+    }
+
+    private _updateProgress(steps: ProgressStep[]) {
+        if (!this._view) {
+            return;
+        }
+
+        const progressLines: string[] = [];
+        
+        for (const step of steps) {
+            let icon = '';
+            switch (step.status) {
+                case 'done':
+                    icon = '✓';
+                    break;
+                case 'active':
+                    icon = '⟳';
+                    break;
+                case 'pending':
+                    icon = '○';
+                    break;
+            }
+
+            let line = `${icon} ${step.name}`;
+            
+            if (step.files_processed !== undefined && step.files_total !== undefined) {
+                line += ` (${step.files_processed}/${step.files_total})`;
+            }
+            
+            if (step.current_file) {
+                line += `\n  → ${step.current_file}`;
+            }
+            
+            progressLines.push(line);
+        }
+
+        this._view.webview.postMessage({
+            type: 'progress',
+            message: progressLines.join('\n')
+        });
     }
 
     private _getHtmlForWebview(webview: vscode.Webview) {
@@ -270,9 +440,58 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 
                 case 'complete':
                     analyzeBtn.disabled = false;
-                    statusDiv.innerHTML = 
-                        '<div>Analysis Complete!</div>' +
-                        '<div class="health-score">Health Score: ' + message.healthScore + '</div>';
+                    let resultHtml = '<div>✓ Analysis Complete!</div>';
+                    resultHtml += '<div class="health-score">Score: ' + message.healthScore + ' (Grade: ' + message.grade + ')</div>';
+                    
+                    if (message.result) {
+                        const result = message.result;
+                        
+                        // Show breakdown
+                        if (result.score && result.score.breakdown) {
+                            resultHtml += '<div style="margin-top: 15px;"><strong>Breakdown:</strong></div>';
+                            resultHtml += '<div style="margin-left: 10px;">';
+                            resultHtml += '• Quality: ' + result.score.breakdown.quality + '<br>';
+                            resultHtml += '• Security: ' + result.score.breakdown.security + '<br>';
+                            resultHtml += '• Documentation: ' + result.score.breakdown.documentation + '<br>';
+                            resultHtml += '• Architecture: ' + result.score.breakdown.architecture;
+                            resultHtml += '</div>';
+                        }
+                        
+                        // Show top priorities
+                        if (result.score && result.score.top_priorities && result.score.top_priorities.length > 0) {
+                            resultHtml += '<div style="margin-top: 15px;"><strong>Top Priorities:</strong></div>';
+                            resultHtml += '<div style="margin-left: 10px;">';
+                            result.score.top_priorities.forEach((priority, idx) => {
+                                resultHtml += (idx + 1) + '. ' + priority + '<br>';
+                            });
+                            resultHtml += '</div>';
+                        }
+                        
+                        // Show summary
+                        if (result.score && result.score.summary) {
+                            resultHtml += '<div style="margin-top: 15px;"><strong>Summary:</strong></div>';
+                            resultHtml += '<div style="margin-left: 10px;">' + result.score.summary + '</div>';
+                        }
+                        
+                        // Show counts
+                        resultHtml += '<div style="margin-top: 15px;"><strong>Analysis Details:</strong></div>';
+                        resultHtml += '<div style="margin-left: 10px;">';
+                        if (result.review && result.review.findings) {
+                            resultHtml += '• Code Review Findings: ' + result.review.findings.length + '<br>';
+                        }
+                        if (result.security && result.security.security) {
+                            resultHtml += '• Security Issues: ' + result.security.security.length + '<br>';
+                        }
+                        if (result.security && result.security.modernization) {
+                            resultHtml += '• Modernization Items: ' + result.security.modernization.length + '<br>';
+                        }
+                        if (result.architecture && result.architecture.nodes) {
+                            resultHtml += '• Architecture Nodes: ' + result.architecture.nodes.length + '<br>';
+                        }
+                        resultHtml += '</div>';
+                    }
+                    
+                    statusDiv.innerHTML = resultHtml;
                     break;
                 
                 case 'error':

@@ -29,6 +29,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SidebarProvider = void 0;
 const vscode = __importStar(require("vscode"));
 const node_fetch_1 = __importDefault(require("node-fetch"));
+const config_1 = require("./config");
 class SidebarProvider {
     constructor(_extensionUri) {
         this._extensionUri = _extensionUri;
@@ -72,19 +73,24 @@ class SidebarProvider {
                 type: 'status',
                 message: 'Starting analysis...'
             });
+            const config = (0, config_1.getConfig)();
             // Send POST request to start analysis
-            const response = await (0, node_fetch_1.default)('http://localhost:8000/analyze', {
+            const response = await (0, node_fetch_1.default)(`${config.backendUrl}/analyze`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ local_path: workspacePath })
+                body: JSON.stringify({ local_path: workspacePath }),
+                timeout: config.requestTimeoutMs
             });
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                const errorText = await response.text();
+                throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
             }
             const data = await response.json();
             const jobId = data.job_id;
+            // Send initial progress update
+            this._updateProgress(data.progress);
             // Start polling for results
             this._startPolling(jobId);
         }
@@ -100,10 +106,11 @@ class SidebarProvider {
         if (this._pollingInterval) {
             clearInterval(this._pollingInterval);
         }
-        // Poll every 3 seconds
+        const config = (0, config_1.getConfig)();
+        // Poll at configured interval
         this._pollingInterval = setInterval(async () => {
             await this._checkResults(jobId);
-        }, 3000);
+        }, config.pollingIntervalMs);
         // Also check immediately
         this._checkResults(jobId);
     }
@@ -112,28 +119,20 @@ class SidebarProvider {
             return;
         }
         try {
-            const response = await (0, node_fetch_1.default)(`http://localhost:8000/results/${jobId}`);
+            const config = (0, config_1.getConfig)();
+            const response = await (0, node_fetch_1.default)(`${config.backendUrl}/jobs/${jobId}`, {
+                timeout: config.requestTimeoutMs
+            });
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
-            const result = await response.json();
-            // Send progress update
-            if (result.status === 'in_progress' || result.status === 'processing') {
-                let progressMessage = 'Analyzing...';
-                if (result.progress) {
-                    const completedSteps = Object.entries(result.progress)
-                        .filter(([_, completed]) => completed)
-                        .map(([step, _]) => `✓ ${step} complete`);
-                    if (completedSteps.length > 0) {
-                        progressMessage = completedSteps.join('\n');
-                    }
-                }
-                this._view.webview.postMessage({
-                    type: 'progress',
-                    message: progressMessage
-                });
-            }
-            else if (result.status === 'completed' || result.status === 'complete') {
+            const apiResponse = await response.json();
+            // Update progress display
+            this._updateProgress(apiResponse.progress);
+            // Handle different response types
+            if (apiResponse.type === 'result' && apiResponse.payload) {
+                // Analysis completed successfully
+                const result = apiResponse.payload;
                 // Stop polling
                 if (this._pollingInterval) {
                     clearInterval(this._pollingInterval);
@@ -142,10 +141,14 @@ class SidebarProvider {
                 // Send completion message with health score
                 this._view.webview.postMessage({
                     type: 'complete',
-                    healthScore: result.health_score || 0
+                    healthScore: result.score.score,
+                    grade: result.score.grade,
+                    result: result
                 });
             }
-            else if (result.status === 'failed' || result.status === 'error') {
+            else if (apiResponse.type === 'error' && apiResponse.payload) {
+                // Analysis failed
+                const error = apiResponse.payload;
                 // Stop polling
                 if (this._pollingInterval) {
                     clearInterval(this._pollingInterval);
@@ -153,9 +156,10 @@ class SidebarProvider {
                 }
                 this._view.webview.postMessage({
                     type: 'error',
-                    message: result.error || 'Analysis failed'
+                    message: `${error.stage}: ${error.message} (${error.code})`
                 });
             }
+            // If type is 'request', continue polling (analysis still in progress)
         }
         catch (error) {
             // Stop polling on error
@@ -168,6 +172,38 @@ class SidebarProvider {
                 message: `Failed to check results: ${error instanceof Error ? error.message : String(error)}`
             });
         }
+    }
+    _updateProgress(steps) {
+        if (!this._view) {
+            return;
+        }
+        const progressLines = [];
+        for (const step of steps) {
+            let icon = '';
+            switch (step.status) {
+                case 'done':
+                    icon = '✓';
+                    break;
+                case 'active':
+                    icon = '⟳';
+                    break;
+                case 'pending':
+                    icon = '○';
+                    break;
+            }
+            let line = `${icon} ${step.name}`;
+            if (step.files_processed !== undefined && step.files_total !== undefined) {
+                line += ` (${step.files_processed}/${step.files_total})`;
+            }
+            if (step.current_file) {
+                line += `\n  → ${step.current_file}`;
+            }
+            progressLines.push(line);
+        }
+        this._view.webview.postMessage({
+            type: 'progress',
+            message: progressLines.join('\n')
+        });
     }
     _getHtmlForWebview(webview) {
         const nonce = this._getNonce();
@@ -259,9 +295,58 @@ class SidebarProvider {
                 
                 case 'complete':
                     analyzeBtn.disabled = false;
-                    statusDiv.innerHTML = 
-                        '<div>Analysis Complete!</div>' +
-                        '<div class="health-score">Health Score: ' + message.healthScore + '</div>';
+                    let resultHtml = '<div>✓ Analysis Complete!</div>';
+                    resultHtml += '<div class="health-score">Score: ' + message.healthScore + ' (Grade: ' + message.grade + ')</div>';
+                    
+                    if (message.result) {
+                        const result = message.result;
+                        
+                        // Show breakdown
+                        if (result.score && result.score.breakdown) {
+                            resultHtml += '<div style="margin-top: 15px;"><strong>Breakdown:</strong></div>';
+                            resultHtml += '<div style="margin-left: 10px;">';
+                            resultHtml += '• Quality: ' + result.score.breakdown.quality + '<br>';
+                            resultHtml += '• Security: ' + result.score.breakdown.security + '<br>';
+                            resultHtml += '• Documentation: ' + result.score.breakdown.documentation + '<br>';
+                            resultHtml += '• Architecture: ' + result.score.breakdown.architecture;
+                            resultHtml += '</div>';
+                        }
+                        
+                        // Show top priorities
+                        if (result.score && result.score.top_priorities && result.score.top_priorities.length > 0) {
+                            resultHtml += '<div style="margin-top: 15px;"><strong>Top Priorities:</strong></div>';
+                            resultHtml += '<div style="margin-left: 10px;">';
+                            result.score.top_priorities.forEach((priority, idx) => {
+                                resultHtml += (idx + 1) + '. ' + priority + '<br>';
+                            });
+                            resultHtml += '</div>';
+                        }
+                        
+                        // Show summary
+                        if (result.score && result.score.summary) {
+                            resultHtml += '<div style="margin-top: 15px;"><strong>Summary:</strong></div>';
+                            resultHtml += '<div style="margin-left: 10px;">' + result.score.summary + '</div>';
+                        }
+                        
+                        // Show counts
+                        resultHtml += '<div style="margin-top: 15px;"><strong>Analysis Details:</strong></div>';
+                        resultHtml += '<div style="margin-left: 10px;">';
+                        if (result.review && result.review.findings) {
+                            resultHtml += '• Code Review Findings: ' + result.review.findings.length + '<br>';
+                        }
+                        if (result.security && result.security.security) {
+                            resultHtml += '• Security Issues: ' + result.security.security.length + '<br>';
+                        }
+                        if (result.security && result.security.modernization) {
+                            resultHtml += '• Modernization Items: ' + result.security.modernization.length + '<br>';
+                        }
+                        if (result.architecture && result.architecture.nodes) {
+                            resultHtml += '• Architecture Nodes: ' + result.architecture.nodes.length + '<br>';
+                        }
+                        resultHtml += '</div>';
+                    }
+                    
+                    statusDiv.innerHTML = resultHtml;
                     break;
                 
                 case 'error':
