@@ -1,13 +1,58 @@
-# RepoSense — Full Team Spec & Battle Plan
-### IBM Bob Hackathon 2026 | 6 People | 24 Hours | Built to Win
+# RepoSense — Team Spec & Battle Plan
+### IBM Bob Hackathon 2026 | 6 People | 24 Hours | VS Code Extension
 
 ---
 
 ## What We're Building
 
-**RepoSense** — Drop any GitHub repo URL. Get a complete AI-powered codebase health report in minutes. Architecture map, code review, auto-documentation, security hardening — all in one beautiful dashboard.
+**RepoSense** — A VS Code extension that gives developers an instant AI-powered health report on any codebase, right inside their editor. Architecture map, code review, auto-documentation, and security hardening — without ever leaving VS Code.
 
-**Tagline:** *From repo to insight in minutes.*
+**Tagline:** *Understand any codebase in minutes. Never leave your editor.*
+
+---
+
+## Why VS Code Extension Wins
+
+- Developers live in VS Code. Results inside the editor = zero friction
+- No browser. No tab switching. No setup for the user
+- Judges see results appear *inline inside VS Code* — that's a product moment nobody else will have
+- The hackathon theme is "turn idea into impact faster" — this is the most direct answer to that
+- We control the demo machine — backend runs locally, extension connects to it, demo is flawless
+
+---
+
+## What It Does
+
+```
+Developer opens any project in VS Code
+            ↓
+Clicks the RepoSense icon in the sidebar
+            ↓
+Extension reads the current workspace
+            ↓
+Live progress panel: "Analyzing... Reviewing... Scoring..."
+            ↓
+Full health report appears in the sidebar:
+
+  ┌─────────────────────────────┐
+  │  RepoSense                  │
+  │                             │
+  │  Health Score               │
+  │  ████████░░  74/100  B      │
+  │                             │
+  │  Top Priorities             │
+  │  1. Add input validation    │
+  │  2. Document 12 functions   │
+  │  3. Update Werkzeug imports │
+  │                             │
+  │  Architecture    →          │
+  │  Code Review     →          │
+  │  Documentation   →          │
+  │  Security        →          │
+  └─────────────────────────────┘
+```
+
+Each section expands into a full webview panel with rich output.
 
 ---
 
@@ -15,11 +60,11 @@
 
 | Layer | Technology | Why |
 |-------|-----------|-----|
-| Frontend | Next.js 14 + Tailwind + shadcn/ui | Fast, beautiful, production-grade |
-| Backend | Python FastAPI | Async, fast, easy to wire to AI |
-| AI Agents | IBM watsonx Orchestrate | 4 specialized agents, orchestrated |
+| Extension | TypeScript + VS Code Extension API | Native VS Code integration |
+| UI Panels | Webview (HTML + CSS + JS + D3.js) | Rich interactive UI inside VS Code |
+| Backend | Python FastAPI | Runs locally, handles all AI orchestration |
+| AI Agents | IBM watsonx Orchestrate | 4 specialized agents |
 | AI Inference | IBM watsonx.ai (Granite model) | Health scoring + plain-English reports |
-| Visualization | D3.js | Architecture graph — the visual centrepiece |
 | Dev Tool | IBM Bob IDE | Used to BUILD everything — sessions exported |
 | Repo | GitHub (public) | Submission + bob_sessions folder |
 
@@ -28,473 +73,739 @@
 ## Four Core Features
 
 ```
-1. UNDERSTAND   →  Architecture map — visual module dependency graph
-2. REVIEW       →  AI code review — issues, risks, severity ratings
-3. DOCUMENT     →  Auto-generated docs + unit test suites
+1. UNDERSTAND   →  Architecture map — D3 module dependency graph in webview
+2. REVIEW       →  AI code review — severity-rated findings list
+3. DOCUMENT     →  Auto-generated docs + unit test stubs
 4. HARDEN       →  Security vulnerabilities + modernization priorities
 ```
-
-**One repo in. One complete health dashboard out.**
 
 ---
 
 ## System Architecture
 
 ```
-[User pastes GitHub URL on frontend]
-            ↓
-[FastAPI Backend — /analyze endpoint]
-  • git clone repo
-  • parse file tree
-  • extract functions, classes, imports
-  • chunk code by module
-            ↓
-[watsonx Orchestrate — 4 Agents in sequence]
-  │
-  ├── Agent 1: ARCHITECT
-  │     Input:  file tree + import graph
-  │     Output: nodes + edges JSON for D3 graph
-  │
-  ├── Agent 2: REVIEWER
-  │     Input:  code chunks
-  │     Output: findings[] with severity LOW/MED/HIGH
-  │
-  ├── Agent 3: DOCUMENTER
-  │     Input:  functions + classes
-  │     Output: markdown docs + test file stubs
-  │
-  └── Agent 4: HARDENER
-        Input:  code chunks + dependencies
-        Output: security issues + modernization list
-            ↓
-[watsonx.ai — IBM Granite model]
-  • Synthesizes all 4 agent outputs
-  • Generates plain-English summary
-  • Produces overall health score /100
-            ↓
-[Next.js Dashboard — 5 panels]
-  ├── Health Score Card       (animated number, colour coded)
-  ├── Architecture Graph      (D3, zoomable, clickable nodes)
-  ├── Code Review Panel       (severity-badged findings list)
-  ├── Documentation Viewer    (syntax-highlighted markdown)
-  └── Security Report         (priority-ordered fix list)
+┌─────────────────────────────────────────────┐
+│              VS Code Extension              │
+│  (TypeScript — runs inside VS Code)         │
+│                                             │
+│  • Reads workspace path on activation       │
+│  • Sends POST /analyze to local backend     │
+│  • Polls GET /results/{job_id} every 3s     │
+│  • Renders results in Webview panels        │
+│  • Updates sidebar with live progress       │
+└──────────────────┬──────────────────────────┘
+                   │  HTTP (localhost:8000)
+                   ▼
+┌─────────────────────────────────────────────┐
+│           FastAPI Backend (local)           │
+│                                             │
+│  POST /analyze                              │
+│  • Read workspace files directly            │
+│  • Parse file tree                          │
+│  • Extract functions, classes, imports      │
+│  • Chunk code by module                     │
+│  • Return job_id immediately                │
+│                                             │
+│  GET /results/{job_id}                      │
+│  • Return progress + results as they come   │
+└──────────────────┬──────────────────────────┘
+                   │
+                   ▼
+┌─────────────────────────────────────────────┐
+│      watsonx Orchestrate — 4 Agents         │
+│                                             │
+│  Agent 1: ARCHITECT                         │
+│  → file tree + import graph                 │
+│  → nodes + edges JSON (for D3 graph)        │
+│                                             │
+│  Agent 2: REVIEWER                          │
+│  → code chunks                              │
+│  → findings[] with severity ratings         │
+│                                             │
+│  Agent 3: DOCUMENTER                        │
+│  → functions + classes                      │
+│  → markdown docs + unit test stubs          │
+│                                             │
+│  Agent 4: HARDENER                          │
+│  → code + dependencies                      │
+│  → security issues + modernization list     │
+└──────────────────┬──────────────────────────┘
+                   │
+                   ▼
+┌─────────────────────────────────────────────┐
+│         watsonx.ai — Granite Model          │
+│                                             │
+│  • Synthesizes all 4 agent outputs          │
+│  • Overall health score /100                │
+│  • Grade A–F                                │
+│  • Plain-English 2-3 sentence summary       │
+│  • Top 3 priorities to fix                  │
+└─────────────────────────────────────────────┘
 ```
 
 ---
 
-## Team Split — Who Owns What
+## Team Split
+
+| Person | Role | Owns |
+|--------|------|------|
+| P1 | Backend Lead | FastAPI engine — file parsing, job queue, AI orchestration |
+| P2 | Orchestrate Lead | All 4 watsonx Orchestrate agents |
+| P3 | AI Lead | watsonx.ai Granite scoring + synthesis |
+| P4 | Extension Lead | VS Code extension core — sidebar, activation, polling |
+| P5 | Webview Lead | All webview panels — architecture graph, review, docs, security |
+| P6 | Integration + Demo | Wiring everything together + Bob sessions + submission |
 
 ---
 
-### P1 — Backend Lead
+## P1 — Backend Lead
 
-**Stack:** Python, FastAPI, git, file parsing
+**Stack:** Python, FastAPI, AST parser
 
-**Owns everything the server does.**
+**Owns the engine that the extension calls.**
 
-**Hour 0–4: Foundation**
+### Hour 0–4: Foundation
 - [ ] Init FastAPI project
-- [ ] POST `/analyze` endpoint — accepts `{ repo_url: string }`
-- [ ] git clone logic (use `gitpython` or subprocess)
-- [ ] File tree walker — list all `.py`, `.js`, `.ts`, `.java` files
-- [ ] Basic file reader — extract raw content per file
+- [ ] `POST /analyze` — accepts `{ "local_path": string }`
+- [ ] Walk file tree — list all `.py`, `.js`, `.ts`, `.java` files
+- [ ] Return `{ "job_id": "abc123", "status": "processing" }` immediately
+- [ ] In-memory job store (dict is fine for POC)
+- [ ] CORS enabled — extension webview needs it
 
-**Hour 4–10: Core Build**
-- [ ] Smart chunker — split code by function/class/module (use AST for Python, regex for JS/TS)
+### Hour 4–10: Core Parsing
+- [ ] AST chunker for Python — extract functions, classes, docstrings, imports
+- [ ] Regex chunker for JS/TS — extract functions, classes, imports
 - [ ] Import graph extractor — map which file imports which
-- [ ] Build payload structure to send to Orchestrate
-- [ ] GET `/results/{job_id}` endpoint for polling
-- [ ] Basic job queue (in-memory dict is fine for POC)
+- [ ] Build payload to send to Orchestrate
+- [ ] `GET /results/{job_id}` — return progress + results
 
-**Hour 10–18: Integration**
-- [ ] Wire chunker output → Orchestrate API call
-- [ ] Handle Orchestrate response and store results
-- [ ] Test with Flask repo, then Express repo
-- [ ] Add timeout handling and error responses
+### Hour 10–18: Integration
+- [ ] Wire parsed output → Orchestrate agents (P2 provides API details)
+- [ ] Wire Orchestrate output → watsonx.ai scorer (P3 provides API details)
+- [ ] Store final results per job_id
+- [ ] Update progress steps in real time as each agent completes
+- [ ] Test end-to-end with a real local Python repo
 
-**Hour 18–22: Hardening**
-- [ ] Edge cases: private repos, empty repos, huge files
-- [ ] Make sure diverse language repos work (Python + JS minimum)
-- [ ] Clean up response schema so frontend can consume it easily
+### Hour 18–22: Hardening
+- [ ] Handle edge cases: empty folders, binary files, huge files (skip >500KB)
+- [ ] Clean error responses for extension to display gracefully
+- [ ] Confirm response schema matches API contract exactly
 
-**Key files:**
+### Key Files
 ```
 /backend
-  main.py           ← FastAPI app + routes
-  parser.py         ← File tree + chunker
-  orchestrate.py    ← Orchestrate API client
-  watsonx.py        ← watsonx.ai client
-  models.py         ← Pydantic schemas
+  main.py         ← FastAPI app, routes, CORS config
+  parser.py       ← File walker, AST chunker, import extractor
+  orchestrate.py  ← Orchestrate API client
+  watsonx.py      ← watsonx.ai Granite client
+  models.py       ← Pydantic request/response schemas
+  jobs.py         ← In-memory job store + progress tracking
 ```
 
-**Use Bob for:** Generating the AST parser, writing the chunking logic, building the Orchestrate client, writing error handlers
+**Use Bob for:** AST parser, FastAPI scaffolding, Orchestrate client, Pydantic models, error handling
 
 ---
 
-### P2 — Orchestrate Lead
+## P2 — Orchestrate Lead
 
-**Stack:** IBM watsonx Orchestrate, prompt engineering
+**Stack:** IBM watsonx Orchestrate
 
-**Owns all four AI agents.**
+**Owns all four AI agents. These are the intelligence of the product.**
 
-**Hour 0–4: Foundation**
-- [ ] Log into watsonx Orchestrate (hackathon cloud account)
+### Hour 0–4: Setup
+- [ ] Log into watsonx Orchestrate on hackathon IBM Cloud account
 - [ ] Create 4 agent skeletons — name, description, blank instructions
-- [ ] Test one simple inference call end-to-end
-- [ ] Understand how to call agents via the Orchestrate API
+- [ ] Test one inference call end-to-end
+- [ ] Get Orchestrate API endpoint + credentials — share with P1 immediately
 
-**Hour 4–10: Build Agent 1 + 2**
+### Hour 4–10: Agent 1 + 2
 
 **Agent 1 — ARCHITECT**
 ```
-System prompt:
-"You are a software architect. Given a file tree and import 
-relationships, identify the main modules, their purpose, 
-and how they connect. Output ONLY valid JSON:
+Name: RepoSense Architect
+Model: granite-3-8b-instruct
+
+Instructions:
+You are a software architect analyzing a codebase.
+Given a file tree and import relationships, identify the main
+modules, their purpose, and how they connect to each other.
+
+Output ONLY valid JSON. No markdown, no explanation:
 {
-  nodes: [{ id, label, type, description }],
-  edges: [{ source, target, relationship }]
-}"
+  "nodes": [
+    {
+      "id": "string",
+      "label": "filename.py",
+      "type": "entry|service|util|config|test",
+      "description": "one sentence description"
+    }
+  ],
+  "edges": [
+    {
+      "source": "string",
+      "target": "string",
+      "relationship": "imports|extends|calls"
+    }
+  ]
+}
 ```
 
 **Agent 2 — REVIEWER**
 ```
-System prompt:
-"You are a senior code reviewer. Analyze the given code chunks 
-and identify issues. Output ONLY valid JSON:
+Name: RepoSense Reviewer
+Model: granite-3-8b-instruct
+
+Instructions:
+You are a senior code reviewer with 10 years experience.
+Analyze the given code chunks and identify real, specific issues.
+Focus on logic errors, missing validation, bad patterns.
+
+Output ONLY valid JSON. No markdown, no explanation:
 {
-  findings: [{
-    file, line, severity (LOW|MEDIUM|HIGH|CRITICAL),
-    issue, suggestion
-  }]
-}"
+  "findings": [
+    {
+      "file": "string",
+      "line": number,
+      "severity": "LOW|MEDIUM|HIGH|CRITICAL",
+      "issue": "specific description of the problem",
+      "suggestion": "concrete fix suggestion"
+    }
+  ]
+}
 ```
 
-**Hour 10–16: Build Agent 3 + 4**
+### Hour 10–16: Agent 3 + 4
 
 **Agent 3 — DOCUMENTER**
 ```
-System prompt:
-"You are a technical writer. Generate documentation and unit 
-test stubs for the given functions and classes. Output:
+Name: RepoSense Documenter
+Model: granite-3-8b-instruct
+
+Instructions:
+You are a technical writer generating developer documentation.
+Given functions and classes, write clear documentation and
+unit test stubs covering the main cases.
+
+Output ONLY valid JSON. No markdown, no explanation:
 {
-  docs: [{ function_name, description, params, returns, example }],
-  tests: [{ function_name, test_cases: [{ input, expected }] }]
-}"
+  "docs": [
+    {
+      "function_name": "string",
+      "description": "string",
+      "params": [{ "name": "string", "type": "string", "description": "string" }],
+      "returns": "string",
+      "example": "code example string"
+    }
+  ],
+  "tests": [
+    {
+      "function_name": "string",
+      "test_cases": [
+        { "description": "string", "input": "string", "expected": "string" }
+      ]
+    }
+  ]
+}
 ```
 
 **Agent 4 — HARDENER**
 ```
-System prompt:
-"You are a security and modernization expert. Analyze the code 
-for security vulnerabilities and outdated patterns. Output:
+Name: RepoSense Hardener
+Model: granite-3-8b-instruct
+
+Instructions:
+You are a security and modernization expert.
+Find real security vulnerabilities and outdated code patterns.
+Be specific — reference actual files and patterns found.
+
+Output ONLY valid JSON. No markdown, no explanation:
 {
-  security: [{ issue, severity, file, fix }],
-  modernization: [{ pattern, suggestion, effort (LOW|MED|HIGH) }]
-}"
+  "security": [
+    {
+      "issue": "specific issue description",
+      "severity": "LOW|MEDIUM|HIGH|CRITICAL",
+      "file": "string",
+      "fix": "concrete fix description"
+    }
+  ],
+  "modernization": [
+    {
+      "pattern": "what the outdated pattern is",
+      "suggestion": "what to replace it with",
+      "effort": "LOW|MEDIUM|HIGH"
+    }
+  ]
+}
 ```
 
-**Hour 16–22: Tuning**
-- [ ] Test each agent with real repo chunks
-- [ ] Tune prompts until output is consistently valid JSON
-- [ ] Make sure agent chaining works (output of 1 feeds into scorer)
-- [ ] Document the API call format for P1 to integrate
+### Hour 16–22: Tuning
+- [ ] Test each agent with real code chunks
+- [ ] Tune prompts until JSON output is 100% consistent — no markdown leaking
+- [ ] Document exact API call format for P1 to integrate
+- [ ] Make sure all 4 return valid parseable JSON every single time
 
-**Use Bob for:** Writing and refining agent prompts, testing agent configurations, generating the API integration code
+**Use Bob for:** Writing and refining agent prompts, testing configurations, generating Orchestrate API call code
 
 ---
 
-### P3 — AI Lead (watsonx.ai)
+## P3 — AI Lead (watsonx.ai)
 
 **Stack:** IBM watsonx.ai, Granite model, Python
 
 **Owns the health scoring and synthesis layer.**
 
-**Hour 0–4: Setup**
-- [ ] Access watsonx.ai on hackathon cloud account
-- [ ] Get Project ID + API key (from Developer Access section)
-- [ ] Test first Granite model inference call via API
-- [ ] Choose model: `granite-3-8b-instruct` (fast, good for code)
+### Hour 0–4: Setup
+- [ ] Access watsonx.ai on hackathon IBM Cloud account
+- [ ] Get Project ID + API key from Developer Access section
+- [ ] Test first Granite model REST API call successfully
+- [ ] Model to use: `granite-3-8b-instruct`
 
-**Hour 4–10: Build Scoring Engine**
+### Hour 4–10: Health Scoring Engine
 
-**Health Score Prompt:**
+**Scoring Prompt:**
 ```
-Given these analysis results from a codebase:
-- Architecture findings: {architect_output}
-- Code review findings: {reviewer_output}  
-- Security findings: {hardener_output}
+You are a code quality analyst. Given analysis from four specialized
+agents, produce an overall health scorecard for this codebase.
 
-Calculate a health score from 0-100 based on:
-- Code quality (30 points): based on review findings severity
-- Security (30 points): based on security issues found
-- Documentation (20 points): based on doc coverage
-- Architecture (20 points): based on complexity and structure
+Architecture analysis: {architect_output}
+Code review findings: {reviewer_output}
+Documentation coverage: {documenter_output}
+Security analysis: {hardener_output}
 
-Return ONLY JSON:
+Score the codebase from 0 to 100:
+- Code Quality (30 points): fewer HIGH/CRITICAL review findings = more points
+- Security (30 points): fewer security issues = more points
+- Documentation (20 points): better coverage = more points
+- Architecture (20 points): cleaner, clearer structure = more points
+
+Return ONLY valid JSON. No markdown, no explanation:
 {
-  score: number,
-  grade: "A"|"B"|"C"|"D"|"F",
-  breakdown: { quality, security, documentation, architecture },
-  summary: "2-3 sentence plain English overview",
-  top_priorities: ["string x3 — most important things to fix"]
+  "score": number,
+  "grade": "A|B|C|D|F",
+  "breakdown": {
+    "quality": number,
+    "security": number,
+    "documentation": number,
+    "architecture": number
+  },
+  "summary": "2-3 sentences describing this codebase honestly",
+  "top_priorities": [
+    "Most important thing to fix first",
+    "Second most important",
+    "Third most important"
+  ]
 }
 ```
 
-**Hour 10–18: Integration**
-- [ ] Wire scoring endpoint to receive Orchestrate outputs
-- [ ] Return structured scorecard to backend
-- [ ] Test with 3 different repos — calibrate scoring
+### Hour 10–18: Integration
+- [ ] Build internal `/score` logic that takes all 4 agent outputs
+- [ ] Call Granite, parse JSON response, return scorecard
+- [ ] Test with 3 real repos — calibrate that scores feel accurate
+- [ ] Wire into P1's pipeline
 
-**Hour 18–22: Polish**
-- [ ] Make sure summaries are genuinely useful, not generic
-- [ ] Add model fallback if primary call fails
+### Hour 18–22: Polish
+- [ ] Summaries must read as genuinely insightful — test and refine the prompt
+- [ ] Add fallback if Granite call fails (return partial score with error note)
 - [ ] Ensure response time is under 15 seconds
 
-**Use Bob for:** Writing the scoring prompts, building the watsonx.ai API client, generating the synthesis logic
+**Use Bob for:** Writing the scoring prompt, building the watsonx.ai Python client, fallback logic
 
 ---
 
-### P4 — Frontend Lead
+## P4 — Extension Lead
 
-**Stack:** Next.js 14, Tailwind CSS, shadcn/ui, D3.js
+**Stack:** TypeScript, VS Code Extension API
 
-**Owns the entire UI shell and the architecture graph.**
+**Owns the VS Code extension core — the shell that holds everything together.**
 
-**Design Direction:** Dark theme. Deep navy/slate background. Electric blue and amber accents. Monospace font for code elements. Clean, data-dense, premium developer tool aesthetic. Think Linear meets Datadog.
+### Hour 0–4: Setup
+- [ ] `npm install -g yo generator-code` then `yo code`
+- [ ] Select: New Extension (TypeScript)
+- [ ] Set up extension manifest (`package.json`)
+- [ ] Register sidebar activity bar icon + view container
+- [ ] Confirm: extension loads in VS Code Extension Host (press F5)
 
-**Hour 0–4: Foundation**
-- [ ] `npx create-next-app@latest reposense` with TypeScript + Tailwind
-- [ ] Install shadcn/ui, D3.js, framer-motion, react-syntax-highlighter
-- [ ] Set up colour tokens in `tailwind.config.ts`
-- [ ] Build the homepage — URL input, hero, submit button
-- [ ] Set up routing: `/` (home) → `/report/[id]` (dashboard)
-
-**Colour tokens:**
-```css
---bg-base: #0a0e1a
---bg-surface: #111827
---bg-elevated: #1f2937
---accent-blue: #3b82f6
---accent-amber: #f59e0b
---accent-green: #10b981
---accent-red: #ef4444
---text-primary: #f9fafb
---text-secondary: #9ca3af
-```
-
-**Hour 4–10: Architecture Graph**
-
-This is the visual centrepiece. Spend real time here.
-
-- [ ] D3 force-directed graph component
-- [ ] Nodes: colour coded by type (entry/service/util/config)
-- [ ] Edges: directional arrows showing import flow
-- [ ] Zoom + pan enabled
-- [ ] Click a node → side panel shows module info
-- [ ] Animated on load — nodes spring into position
-
-```tsx
-// Node colour mapping
-const nodeColors = {
-  entry: '#3b82f6',      // blue — entry points
-  service: '#8b5cf6',    // purple — services
-  util: '#10b981',       // green — utilities
-  config: '#f59e0b',     // amber — config files
-  test: '#6b7280',       // grey — test files
+```json
+// package.json — contributes section
+{
+  "contributes": {
+    "commands": [
+      {
+        "command": "reposense.analyze",
+        "title": "RepoSense: Analyze Workspace"
+      },
+      {
+        "command": "reposense.refresh",
+        "title": "RepoSense: Refresh Analysis"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "reposense-sidebar",
+          "title": "RepoSense",
+          "icon": "$(pulse)"
+        }
+      ]
+    },
+    "views": {
+      "reposense-sidebar": [
+        {
+          "type": "webview",
+          "id": "reposense.mainPanel",
+          "name": "Code Health"
+        }
+      ]
+    }
+  }
 }
 ```
 
-**Hour 10–18: Dashboard Shell**
-- [ ] 5-panel dashboard layout
-- [ ] Health score card with animated count-up number
-- [ ] Grade badge (A/B/C/D/F) with appropriate colour
-- [ ] Top priorities section
-- [ ] Loading state — live progress log (not just a spinner)
-- [ ] Error state — graceful failure UI
-
-**Hour 18–22: Polish**
-- [ ] Smooth page transitions
-- [ ] Skeleton loading states for each panel
-- [ ] Mobile-responsive layout
-- [ ] Make the health score number animate from 0 on load
-
-**Key components:**
-```
-/components
-  ArchitectureGraph.tsx   ← D3 graph
-  HealthScoreCard.tsx     ← Animated score + grade
-  ReviewPanel.tsx         ← Findings list
-  DocsViewer.tsx          ← Syntax-highlighted docs
-  SecurityReport.tsx      ← Priority fix list
-  ProgressLog.tsx         ← Live pipeline status
-  RepoInput.tsx           ← Homepage input form
-```
-
-**Use Bob for:** Generating the D3 graph component, writing the animation logic, building the dashboard layout
-
----
-
-### P5 — Frontend Support
-
-**Stack:** Next.js, Tailwind, shadcn/ui
-
-**Owns three of the five dashboard panels.**
-
-**Hour 0–4: Setup**
-- [ ] Pull P4's repo once initialized
-- [ ] Set up local dev environment
-- [ ] Build the Code Review Panel component (empty but structured)
-- [ ] Build the Docs Viewer component (empty but structured)
-- [ ] Build the Security Report component (empty but structured)
-
-**Hour 4–10: Panel Build**
-
-**Code Review Panel:**
-- [ ] Findings list sorted by severity (CRITICAL first)
-- [ ] Severity badges: red/orange/yellow/blue
-- [ ] File + line number for each finding
-- [ ] Expandable detail for each finding
-- [ ] Filter by severity
-
-**Docs Viewer:**
-- [ ] Tab-switcher: Documentation / Tests
-- [ ] Syntax-highlighted code blocks (react-syntax-highlighter)
-- [ ] Copy-to-clipboard button on each block
-- [ ] Function name headers with description
-
-**Security Report:**
-- [ ] Two sections: Security Issues + Modernization
-- [ ] Effort badges: LOW/MED/HIGH
-- [ ] Priority ordered list
-- [ ] "Fix this first" highlight on top item
-
-**Hour 10–18: Wire to API**
-- [ ] Connect each panel to receive real data from P6's API integration
-- [ ] Handle loading states per panel
-- [ ] Handle empty states (no findings = good news message)
-
-**Hour 18–22: Polish**
-- [ ] Consistent spacing and typography across all panels
-- [ ] Hover states on all interactive elements
-- [ ] Make sure panels look good with both small and large datasets
-
-**Use Bob for:** Generating panel components, writing filter logic, building the copy-to-clipboard functionality
-
----
-
-### P6 — Integration Lead + Demo
-
-**Stack:** Everything a bit, focused on glue code and submission
-
-**Owns: connecting all the pieces, demo, Bob sessions, submission**
-
-**This is the most critical role for actually winning.**
-
-**Hour 0–4: Setup**
-- [ ] Create GitHub repo: `reposense-ibm-hackathon`
-- [ ] Create `bob_sessions/` folder immediately
-- [ ] Set up `.env.example` with all required keys
-- [ ] Create initial README structure
-- [ ] Start using Bob IDE — export every single session from day one
-
-**Hour 4–10: API Integration**
-- [ ] Build the frontend API client (`/lib/api.ts`)
-- [ ] Connect homepage form → POST `/analyze`
-- [ ] Implement polling logic → GET `/results/{id}` every 3 seconds
-- [ ] Feed results into each panel component as data arrives
-- [ ] Build the live progress log (show pipeline steps as they complete)
+### Hour 4–10: Core Extension Logic
 
 ```typescript
-// Polling logic
-const pollResults = async (jobId: string) => {
-  const interval = setInterval(async () => {
-    const res = await fetch(`/api/results/${jobId}`)
-    const data = await res.json()
-    if (data.status === 'complete') {
-      clearInterval(interval)
-      setResults(data)
-    }
-    setProgress(data.progress) // update live log
-  }, 3000)
+// extension.ts
+import * as vscode from 'vscode'
+
+export function activate(context: vscode.ExtensionContext) {
+  const provider = new RepoSenseViewProvider(context.extensionUri)
+
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider('reposense.mainPanel', provider)
+  )
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('reposense.analyze', () => {
+      provider.startAnalysis()
+    })
+  )
 }
+
+class RepoSenseViewProvider implements vscode.WebviewViewProvider {
+  private _view?: vscode.WebviewView
+
+  constructor(private readonly _extensionUri: vscode.Uri) {}
+
+  resolveWebviewView(webviewView: vscode.WebviewView) {
+    this._view = webviewView
+    webviewView.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [this._extensionUri]
+    }
+    webviewView.webview.html = this.getLoadingHtml()
+    this.startAnalysis()
+  }
+
+  async startAnalysis() {
+    const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath
+    if (!workspacePath) {
+      this._view?.webview.postMessage({ type: 'error', message: 'No workspace open' })
+      return
+    }
+
+    this._view?.webview.postMessage({ type: 'loading', step: 'Starting analysis...' })
+
+    try {
+      const res = await fetch('http://localhost:8000/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ local_path: workspacePath })
+      })
+      const { job_id } = await res.json()
+      this.pollResults(job_id)
+    } catch (e) {
+      this._view?.webview.postMessage({
+        type: 'error',
+        message: 'Cannot connect to RepoSense backend. Is it running?'
+      })
+    }
+  }
+
+  private pollResults(jobId: string) {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`http://localhost:8000/results/${jobId}`)
+        const data = await res.json()
+
+        this._view?.webview.postMessage({ type: 'progress', data: data.progress })
+
+        if (data.status === 'complete') {
+          clearInterval(interval)
+          this._view?.webview.postMessage({ type: 'results', data: data.results })
+        } else if (data.status === 'failed') {
+          clearInterval(interval)
+          this._view?.webview.postMessage({ type: 'error', message: 'Analysis failed' })
+        }
+      } catch (e) {
+        clearInterval(interval)
+      }
+    }, 3000)
+  }
+
+  private getLoadingHtml(): string {
+    return `<!DOCTYPE html>
+    <html>
+    <body style="background:#0a0e1a;color:#f9fafb;font-family:monospace;padding:16px;">
+      <p>Initializing RepoSense...</p>
+    </body>
+    </html>`
+  }
+}
+
+export function deactivate() {}
 ```
 
-**Hour 10–18: End-to-End Testing**
-- [ ] Test full pipeline with `pallets/flask` repo
-- [ ] Test with `expressjs/express` repo
-- [ ] Test with a small unknown repo (edge case)
-- [ ] Log and fix every broken thing
-- [ ] Make sure Bob sessions are being exported throughout
+### Hour 10–18: Extension Polish
+- [ ] Status bar item showing current analysis state
+- [ ] Refresh button in sidebar title bar
+- [ ] Handle workspace change — re-run analysis on folder switch
+- [ ] Show notification when analysis completes: "RepoSense: Analysis complete — Score 74/100"
+- [ ] "Open in browser" command if they want full web view later
 
-**Hour 18–22: Demo Prep**
-- [ ] Pick the best demo repo — **`pallets/flask`** recommended
-- [ ] Run full pipeline 3 times — screenshot best output
-- [ ] Record 2-minute demo video:
-  - 0:00–0:20 — problem statement (devs waste hours understanding repos)
-  - 0:20–1:00 — live demo (paste URL, watch pipeline, show dashboard)
-  - 1:00–1:40 — show each panel with real output
-  - 1:40–2:00 — health score reveal, close with tagline
-- [ ] Write final README
+### Hour 18–22: Final Extension Polish
+- [ ] Package extension: `vsce package` → produces `.vsix`
+- [ ] Test fresh install from `.vsix` on clean VS Code
+- [ ] Error messages are friendly and actionable
+- [ ] Extension activates instantly with no lag
 
-**Hour 22–24: Submission**
-- [ ] Export ALL Bob task sessions from all team members
+**Use Bob for:** Extension boilerplate, TypeScript types, polling logic, VS Code API usage, error handling
+
+---
+
+## P5 — Webview Lead
+
+**Stack:** HTML, CSS, JavaScript, D3.js (inside VS Code webview)
+
+**Owns all the UI panels that render inside the extension.**
+
+### What Is a Webview?
+A VS Code webview is an iframe inside VS Code. P4's extension injects HTML into it. P5 writes that HTML — it's a regular web page but styled to look native inside VS Code. It listens for `postMessage` events from the extension and renders results.
+
+### Design Direction
+Match VS Code's dark theme exactly. Use VS Code CSS variables so it looks native.
+
+```css
+/* VS Code native CSS variables — use these */
+body {
+  background-color: var(--vscode-sideBar-background);
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+/* Custom accents */
+--rs-blue:   #3b82f6;
+--rs-green:  #10b981;
+--rs-amber:  #f59e0b;
+--rs-red:    #ef4444;
+--rs-purple: #8b5cf6;
+```
+
+### Hour 0–4: Setup
+- [ ] Create `/webview/` folder in extension project
+- [ ] Build `main.html` — the base webview HTML file
+- [ ] Set up message listener:
+  ```javascript
+  const vscode = acquireVsCodeApi()
+  window.addEventListener('message', event => {
+    const msg = event.data
+    if (msg.type === 'loading') showLoading(msg.step)
+    if (msg.type === 'progress') updateProgress(msg.data)
+    if (msg.type === 'results') showResults(msg.data)
+    if (msg.type === 'error') showError(msg.message)
+  })
+  ```
+- [ ] Build loading state — animated pulse, step names ticking through
+- [ ] Build error state — clear message, retry button
+
+### Hour 4–10: Health Score Panel (The Hero)
+
+This is the first thing users see. Make it stunning.
+
+```html
+<!-- Health Score Card -->
+<div class="score-card">
+  <div class="score-ring">
+    <!-- SVG circular progress ring -->
+    <svg viewBox="0 0 100 100">
+      <circle class="ring-bg" cx="50" cy="50" r="40"/>
+      <circle class="ring-fill" cx="50" cy="50" r="40"
+              stroke-dasharray="251"
+              stroke-dashoffset="calc(251 - (251 * var(--score)) / 100)"/>
+    </svg>
+    <div class="score-number" id="scoreNum">0</div>
+  </div>
+  <div class="grade-badge" id="gradeBadge">B</div>
+  <p class="summary" id="summary"></p>
+  <div class="priorities">
+    <h4>Top Priorities</h4>
+    <ol id="priorityList"></ol>
+  </div>
+</div>
+```
+
+- [ ] Score number animates from 0 to final value on load
+- [ ] Circular SVG ring fills to match score
+- [ ] Grade badge colour: A=green, B=blue, C=amber, D/F=red
+- [ ] Summary text fades in after score animation
+
+### Hour 4–10: Architecture Graph Panel
+
+The visual centrepiece. D3 force-directed graph inside a webview.
+
+- [ ] D3.js loaded via CDN in webview HTML
+- [ ] Force-directed graph with nodes and edges
+- [ ] Node colours by type:
+  ```
+  entry   → #3b82f6  blue
+  service → #8b5cf6  purple
+  util    → #10b981  green
+  config  → #f59e0b  amber
+  test    → #6b7280  grey
+  ```
+- [ ] Zoom + pan enabled
+- [ ] Click a node → shows module description in a tooltip
+- [ ] Nodes animate in with spring physics on load
+
+### Hour 10–16: Review + Docs + Security Panels
+
+**Code Review Panel:**
+- [ ] Findings sorted by severity — CRITICAL first
+- [ ] Severity badge per finding: red/orange/yellow/blue
+- [ ] File name + line number
+- [ ] Expandable: click to see full issue + suggestion
+- [ ] Filter buttons: ALL / HIGH+ / CRITICAL
+
+**Documentation Panel:**
+- [ ] Two tabs: Docs / Tests
+- [ ] Each function shown with description, params, return, example
+- [ ] Code blocks with monospace styling + copy button
+- [ ] Test stubs displayed as copyable code
+
+**Security Panel:**
+- [ ] Two sections: Security Issues / Modernization
+- [ ] Top item highlighted: "Fix This First"
+- [ ] Effort badges: LOW/MED/HIGH
+- [ ] Priority-ordered list
+
+### Hour 16–18: Navigation
+- [ ] Tab bar at top of webview: Score | Architecture | Review | Docs | Security
+- [ ] Smooth panel transitions
+- [ ] Active tab highlighted
+- [ ] Tab shows badge count for findings (e.g. "Review (7)")
+
+### Hour 18–22: Polish
+- [ ] Skeleton loading states per panel while analysis runs
+- [ ] All panels look great with both small and large datasets
+- [ ] Empty state messages: "No security issues found 🎉"
+- [ ] Everything feels fast and native inside VS Code
+
+**Use Bob for:** Webview HTML/CSS structure, D3 graph component, score ring animation, panel tab navigation
+
+---
+
+## P6 — Integration + Demo + Submission
+
+**Stack:** Everything a bit — glue code, testing, demo, Bob sessions
+
+**This role is the most critical for actually winning.**
+
+### Hour 0–4: Setup
+- [ ] Create GitHub repo: `reposense-ibm-hackathon` (public)
+- [ ] Create `bob_sessions/` folder immediately
+- [ ] Set up project structure:
+  ```
+  /reposense-ibm-hackathon
+    /backend          ← P1's FastAPI
+    /vscode-extension ← P4 + P5's extension
+    /bob_sessions     ← All session exports
+    README.md
+    .env.example
+    DEMO_SCRIPT.md
+  ```
+- [ ] Set up `.env.example`:
+  ```
+  WATSONX_API_KEY=your_key_here
+  WATSONX_PROJECT_ID=your_project_id_here
+  WATSONX_URL=https://us-south.ml.cloud.ibm.com
+  ORCHESTRATE_API_KEY=your_key_here
+  ORCHESTRATE_URL=your_orchestrate_url_here
+  ```
+- [ ] Start using Bob IDE from minute one — export every session
+
+### Hour 4–10: Integration
+- [ ] Confirm P4's extension can POST to P1's backend
+- [ ] Confirm polling works — progress steps update in webview
+- [ ] Confirm results flow through to P5's webview panels
+- [ ] Test full pipeline with a small real local Python project
+- [ ] Document any blockers and help unblock them
+
+### Hour 10–18: End-to-End Testing
+- [ ] Clone `pallets/flask` locally
+- [ ] Run full pipeline — all 4 agents — through extension
+- [ ] Every panel shows real data
+- [ ] Test with a JS project too (different language)
+- [ ] Fix everything that breaks
+- [ ] Keep exporting Bob sessions throughout
+
+### Hour 18–22: Demo Prep
+- [ ] Run full pipeline 3 times on `pallets/flask`
+- [ ] Pick the cleanest run — note the score and key findings
+- [ ] Record 2-minute demo video (script below)
+- [ ] Take screenshots of every panel for README
+- [ ] Write the README (template below)
+
+### Hour 22–24: Submission
+- [ ] Collect Bob session exports from ALL 6 team members
 - [ ] Screenshot every session consumption summary
-- [ ] Upload all to `bob_sessions/` folder
-- [ ] Final README with:
-  - What it does (2 sentences)
-  - How to run it locally
-  - Tech stack
-  - Screenshots
-  - Team
-- [ ] Submit on lablab.ai before deadline
+- [ ] Upload all to `bob_sessions/`:
+  ```
+  bob_sessions/
+    P1_parser_session.md
+    P1_parser_screenshot.png
+    P2_agents_session.md
+    P2_agents_screenshot.png
+    P3_scoring_session.md
+    P3_scoring_screenshot.png
+    P4_extension_session.md
+    P4_extension_screenshot.png
+    P5_webview_session.md
+    P5_webview_screenshot.png
+    P6_integration_session.md
+    P6_integration_screenshot.png
+  ```
+- [ ] Final submit on lablab.ai before **May 17, 2026 — 8:00 AM PDT**
 
-**Use Bob for:** Writing the API client, building the polling logic, generating the README, helping debug integration issues
-
----
-
-## Bob IDE — Rules for All 6 People
-
-This is non-negotiable. Judges check the bob_sessions exports.
-
-**Every person must:**
-- Use Bob IDE to write code — not just chat with it, actually generate code through it
-- Export task session report after every meaningful task
-- Screenshot the session consumption summary
-- Save everything to `bob_sessions/` with naming: `P1_parser_task.md`, `P2_agent1_task.md` etc.
-
-**Good Bob tasks to run:**
-- "Help me write a Python AST parser that extracts all function names and docstrings"
-- "Generate a D3 force-directed graph React component with zoom and pan"
-- "Write a watsonx.ai API client in Python that calls the Granite model"
-- "Create a FastAPI endpoint that accepts a GitHub URL and returns a job ID"
-- "Write unit tests for the file chunker module"
+**Use Bob for:** Integration scripts, README writing, debugging help, test scripts
 
 ---
 
-## API Contract — The Single Most Important Document
+## API Contract — Locked at Hour 4
 
-P1 (backend) and P4/P5/P6 (frontend) must agree on this before hour 4.
+Everyone builds against this. Do not change after hour 4.
 
-**POST `/analyze`**
+### POST `/analyze`
 ```json
-Request:  { "repo_url": "https://github.com/pallets/flask" }
-Response: { "job_id": "abc123", "status": "processing" }
+Request:
+{ "local_path": "/Users/dev/flask" }
+
+Response:
+{ "job_id": "abc-123-def", "status": "processing" }
 ```
 
-**GET `/results/{job_id}`**
+### GET `/results/{job_id}`
 ```json
-Response: {
+{
   "status": "processing|complete|failed",
   "progress": {
     "steps": [
-      { "name": "Cloning repo", "status": "done" },
-      { "name": "Parsing files", "status": "done" },
-      { "name": "Running Architect agent", "status": "active" },
-      { "name": "Running Reviewer agent", "status": "pending" },
-      { "name": "Running Documenter agent", "status": "pending" },
-      { "name": "Running Hardener agent", "status": "pending" },
-      { "name": "Generating health score", "status": "pending" }
+      { "name": "Reading workspace files", "status": "done|active|pending" },
+      { "name": "Parsing code structure", "status": "done|active|pending" },
+      { "name": "Architect agent", "status": "done|active|pending" },
+      { "name": "Reviewer agent", "status": "done|active|pending" },
+      { "name": "Documenter agent", "status": "done|active|pending" },
+      { "name": "Hardener agent", "status": "done|active|pending" },
+      { "name": "Generating health score", "status": "done|active|pending" }
     ]
   },
   "results": {
@@ -506,65 +817,194 @@ Response: {
       "documentation": 16,
       "architecture": 16
     },
-    "summary": "Flask is a well-structured micro-framework...",
+    "summary": "Flask is a well-structured micro-framework with clear separation of concerns. Input validation is inconsistent across route handlers. Documentation coverage is below industry standard for a public library.",
     "top_priorities": [
-      "Add input validation to route handlers",
+      "Add input validation to 3 route handlers in app.py",
       "Document 12 undocumented public functions",
-      "Update deprecated Werkzeug patterns"
+      "Update deprecated Werkzeug import patterns"
     ],
     "architecture": {
-      "nodes": [...],
-      "edges": [...]
+      "nodes": [
+        { "id": "app", "label": "app.py", "type": "entry", "description": "Main application factory and entry point" },
+        { "id": "routing", "label": "routing.py", "type": "service", "description": "URL routing and endpoint registration" }
+      ],
+      "edges": [
+        { "source": "app", "target": "routing", "relationship": "imports" }
+      ]
     },
     "review": {
-      "findings": [...]
+      "findings": [
+        {
+          "file": "app.py",
+          "line": 47,
+          "severity": "HIGH",
+          "issue": "No input validation on user-supplied request data",
+          "suggestion": "Add validation using request.args.get() with type checking"
+        }
+      ]
     },
     "docs": {
-      "docs": [...],
-      "tests": [...]
+      "docs": [
+        {
+          "function_name": "create_app",
+          "description": "Application factory function that creates and configures the Flask instance",
+          "params": [{ "name": "config", "type": "dict", "description": "Configuration dictionary" }],
+          "returns": "Flask application instance",
+          "example": "app = create_app({'DEBUG': True})"
+        }
+      ],
+      "tests": [
+        {
+          "function_name": "create_app",
+          "test_cases": [
+            { "description": "Creates app with default config", "input": "None", "expected": "Flask instance" },
+            { "description": "Creates app with custom config", "input": "{'DEBUG': True}", "expected": "Flask instance with debug mode" }
+          ]
+        }
+      ]
     },
     "security": {
-      "security": [...],
-      "modernization": [...]
+      "security": [
+        {
+          "issue": "Secret key hardcoded in source",
+          "severity": "CRITICAL",
+          "file": "config.py",
+          "fix": "Move to environment variable: os.environ.get('SECRET_KEY')"
+        }
+      ],
+      "modernization": [
+        {
+          "pattern": "Deprecated Werkzeug import path used",
+          "suggestion": "Update to werkzeug.utils for forward compatibility",
+          "effort": "LOW"
+        }
+      ]
     }
   }
 }
 ```
 
-**Everyone builds against this contract. P1 implements it. Everyone else consumes it.**
+---
+
+## Bob IDE Rules — All 6 People
+
+Non-negotiable. Judges check the `bob_sessions` exports carefully.
+
+**Every person must:**
+- Use Bob IDE to generate their code — actually build through Bob
+- Export task session report after every meaningful task
+- Screenshot the session consumption summary
+- Name exports clearly: `P1_ast_parser.md`, `P5_d3_graph.md`
+
+**Recommended Bob prompts per person:**
+
+| Person | Bob prompts to use |
+|--------|-------------------|
+| P1 | "Write a Python AST parser that extracts all function names, parameters, and docstrings from .py files and returns structured JSON" |
+| P1 | "Create a FastAPI endpoint that accepts a local_path, walks the file tree, and returns a job_id" |
+| P2 | "Help me write a watsonx Orchestrate agent prompt that outputs strict JSON representing code architecture as nodes and edges" |
+| P3 | "Write a Python REST client for IBM watsonx.ai that calls the Granite model with retry logic and error handling" |
+| P4 | "Write a VS Code extension in TypeScript that registers a webview sidebar, reads the workspace path, and polls a REST API every 3 seconds" |
+| P5 | "Generate an HTML/CSS/JS webview for a VS Code extension that displays a health score ring animation and a D3 force-directed graph" |
+| P6 | "Write an integration test script that sends a POST to a FastAPI endpoint and polls until complete, printing progress" |
 
 ---
 
-## The Demo — Exactly What to Show
+## Demo Script — 2 Minutes
 
-**Repo to use:** `https://github.com/pallets/flask`
+**Project to analyze:** Clone `pallets/flask` locally before the demo
 
-**Demo flow:**
-1. Open RepoSense homepage — clean, dark, impressive
-2. Paste the Flask GitHub URL
-3. Hit Analyze — live progress log starts updating
-4. Watch: "Cloning... Parsing... Architect running... Reviewer running..."
-5. Dashboard loads panel by panel as results come in
-6. Show architecture graph — zoom in, click a node
-7. Show code review — 3 HIGH severity findings highlighted
-8. Show docs — generated docstrings for undocumented functions
-9. Show security — 2 issues flagged with fix suggestions
-10. Health score animates to final number — **74/100 — Grade B**
-11. "Flask is production-ready but has 3 areas needing attention..."
+```
+0:00–0:20  The Problem
+  "Every developer knows this feeling — you open an unfamiliar codebase
+   and spend hours just figuring out where things are, what's broken,
+   what's risky. RepoSense fixes that. Right inside VS Code."
 
-**That's the demo. Practise it twice before submitting.**
+0:20–1:10  Live Demo
+  • Open VS Code with flask project in workspace
+  • Click the RepoSense icon in the activity bar
+  • Sidebar panel appears — "Analyzing your workspace..."
+  • Live progress ticks through:
+      ✓ Reading workspace files
+      ✓ Parsing code structure
+      ⟳ Architect agent running...
+      ✓ Architect agent complete
+      ⟳ Reviewer agent running...
+      ... etc
+  • Health score ring fills to 74/100 — Grade B
+  • Score number counts up from 0
+  • Summary text fades in
+  • Top 3 priorities appear
+
+1:10–1:40  Explore Panels
+  • Click Architecture tab — D3 graph springs to life
+  • Zoom in, click a node — module description appears
+  • Click Review tab — HIGH severity findings with file + line
+  • Click Security tab — CRITICAL issue at top: "hardcoded secret key"
+  • "All of this, without leaving VS Code. No browser. No context switch."
+
+1:40–2:00  Close
+  • "Built with IBM Bob. Powered by watsonx Orchestrate and watsonx.ai."
+  • "RepoSense — understand any codebase in minutes."
+```
+
+**Practise this twice before recording.**
 
 ---
 
-## Submission Checklist
+## README Template
 
-- [ ] GitHub repo is public
-- [ ] `bob_sessions/` folder has exports from all 6 team members
-- [ ] README has screenshots, setup instructions, tech stack
-- [ ] Demo video is 2 minutes max
-- [ ] App runs locally with `npm run dev` + `uvicorn main:app`
-- [ ] `.env.example` shows required keys (no actual keys committed)
-- [ ] Submitted on lablab.ai before May 17 8:00 AM PDT
+```markdown
+# RepoSense
+> AI-powered codebase health analysis, right inside VS Code.
+
+Built with IBM Bob | Powered by IBM watsonx Orchestrate + watsonx.ai
+
+## The Problem
+Developers waste hours understanding unfamiliar codebases — where
+things live, what's broken, what's risky. RepoSense fixes that
+without you ever leaving your editor.
+
+## What It Does
+Open any project in VS Code. Click the RepoSense icon.
+Get a complete health report in minutes:
+
+- **Architecture Map** — visual D3 module dependency graph
+- **Code Review** — AI-detected issues with severity ratings
+- **Documentation** — auto-generated docs + unit test stubs
+- **Security** — vulnerabilities and modernization priorities
+- **Health Score** — overall codebase score out of 100
+
+## Tech Stack
+- VS Code Extension: TypeScript + VS Code Extension API
+- UI: Webview (HTML + CSS + D3.js)
+- Backend: Python FastAPI (runs locally)
+- AI Agents: IBM watsonx Orchestrate (4 agents)
+- AI Inference: IBM watsonx.ai (Granite model)
+- Built using: IBM Bob IDE
+
+## Running Locally
+
+### 1. Start the backend
+cd backend
+pip install -r requirements.txt
+cp .env.example .env  # fill in your watsonx credentials
+uvicorn main:app --reload
+
+### 2. Install and run the extension
+cd vscode-extension
+npm install
+# Press F5 in VS Code to launch Extension Development Host
+# Open any project folder
+# Click the RepoSense icon in the sidebar
+
+## IBM Bob Usage
+See bob_sessions/ for all task session exports showing IBM Bob
+was used throughout the entire development process.
+
+## Team
+[Your names here]
+```
 
 ---
 
@@ -572,34 +1012,48 @@ Response: {
 
 | Hours | Milestone |
 |-------|-----------|
-| 0–4 | All 6 setups done. Backend skeleton. 4 agent skeletons. Homepage UI live. |
-| 4–10 | Backend parsing works. Agents 1+2 producing real output. D3 graph renders. |
-| 10–18 | Full pipeline connected end-to-end. Real data in all 5 panels. |
-| 18–22 | Polish. Edge cases. Demo repo tested. Video recorded. |
-| 22–24 | Bob sessions exported. README done. Submitted. |
+| 0–4 | Repo live. Backend skeleton running and returning fake data. Extension loads in VS Code. Webview renders basic HTML. All 4 agent skeletons in Orchestrate. |
+| 4–10 | Backend parsing real files. Agents 1+2 producing real JSON. D3 graph renders in webview. Health score card animates. Polling works end-to-end. |
+| 10–18 | Full pipeline working. All 4 agents + scorer. All 5 panels showing real data. Integration tested with Flask repo. |
+| 18–22 | Polish everything. Demo run 3 times. Video recorded. README written. |
+| 22–24 | Bob sessions collected from all 6 people. Submitted on lablab.ai. |
 
 ---
 
-## If Things Break — Priority Order
-
-If you run out of time, cut in this order — **never cut the core loop:**
-
-**Must have (non-negotiable):**
-- Repo URL input → backend → at least 2 agents running → health score → dashboard
-
-**Cut first if needed:**
-- Docs viewer (Agent 3 output)
-- Modernization section of Security panel
-
-**Cut second if needed:**
-- D3 graph → replace with simple file tree list
-- Live progress log → replace with simple spinner
+## If Things Break — Cut Priority
 
 **Never cut:**
-- Health score card — this is the money shot
-- Code review findings — this is the clearest value
-- The architecture graph — this is what judges remember
+- Health score card with animated number
+- Architecture graph — this is what judges remember
+- At least 2 of 4 agents producing output
+
+**Cut first if needed:**
+- Docs panel → drop Agent 3, show placeholder
+- Modernization section → simplify Hardener to security only
+
+**Cut second if needed:**
+- D3 graph → replace with simple indented file tree
+- Live progress steps → replace with single spinner
+
+**Never ever cut:**
+- The extension working end-to-end
+- The health score
+- The code review findings
 
 ---
 
-*Built with IBM Bob. Powered by watsonx. RepoSense — From repo to insight in minutes.*
+## Submission Checklist
+
+- [ ] GitHub repo is public
+- [ ] `bob_sessions/` has exports + screenshots from all 6 people
+- [ ] Extension installs and runs from the repo
+- [ ] Backend runs with `uvicorn main:app`
+- [ ] README has screenshots of every panel
+- [ ] Demo video is 2 minutes max
+- [ ] No API keys in the repo — `.env.example` only
+- [ ] Submitted on lablab.ai before **May 17, 2026 — 8:00 AM PDT**
+
+---
+
+*RepoSense — Understand any codebase in minutes. Never leave your editor.*
+*Built with IBM Bob. Powered by IBM watsonx Orchestrate + watsonx.ai.*
