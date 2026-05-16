@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' https://cdn.jsdelivr.net; script-src 'unsafe-inline' https://cdn.jsdelivr.net; img-src https: data:;">
+    <title>RepoSense Analysis</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Navigation Tabs -->
+    <nav class="tab-bar">
+        <button class="tab-button active" data-panel="health">
+            <span class="tab-icon">📊</span>
+            <span class="tab-label">Health Score</span>
+        </button>
+        <button class="tab-button" data-panel="architecture">
+            <span class="tab-icon">🏗️</span>
+            <span class="tab-label">Architecture</span>
+        </button>
+        <button class="tab-button" data-panel="review">
+            <span class="tab-icon">🔍</span>
+            <span class="tab-label">Code Review</span>
+            <span class="tab-badge" id="reviewBadge"></span>
+        </button>
+        <button class="tab-button" data-panel="docs">
+            <span class="tab-icon">📚</span>
+            <span class="tab-label">Documentation</span>
+        </button>
+        <button class="tab-button" data-panel="security">
+            <span class="tab-icon">🔒</span>
+            <span class="tab-label">Security</span>
+            <span class="tab-badge" id="securityBadge"></span>
+        </button>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="content-area">
+        <!-- Loading State -->
+        <div id="loadingState" class="state-panel">
+            <div class="loading-container">
+                <div class="pulse-loader"></div>
+                <h2>Analyzing Repository...</h2>
+                <p id="loadingStep" class="loading-step">Initializing...</p>
+                <div class="progress-bar">
+                    <div id="progressFill" class="progress-fill"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Error State -->
+        <div id="errorState" class="state-panel hidden">
+            <div class="error-container">
+                <div class="error-icon">⚠️</div>
+                <h2>Analysis Failed</h2>
+                <p id="errorMessage" class="error-message"></p>
+                <button id="retryButton" class="retry-button">Retry Analysis</button>
+            </div>
+        </div>
+
+        <!-- Health Score Panel -->
+        <div id="healthPanel" class="panel hidden">
+            <div class="score-card">
+                <div class="score-ring-container">
+                    <svg class="score-ring" viewBox="0 0 100 100">
+                        <circle class="ring-bg" cx="50" cy="50" r="40"/>
+                        <circle id="ringFill" class="ring-fill" cx="50" cy="50" r="40"
+                                stroke-dasharray="251"
+                                stroke-dashoffset="251"/>
+                    </svg>
+                    <div class="score-number" id="scoreNum">0</div>
+                </div>
+                <div id="gradeBadge" class="grade-badge">-</div>
+                <p id="summary" class="summary"></p>
+                <div class="priorities">
+                    <h4>Top Priorities</h4>
+                    <ol id="priorityList" class="priority-list"></ol>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architecture Graph Panel -->
+        <div id="architecturePanel" class="panel hidden">
+            <div class="architecture-container">
+                <div class="graph-controls">
+                    <button id="zoomIn" class="control-button">🔍+</button>
+                    <button id="zoomOut" class="control-button">🔍-</button>
+                    <button id="resetZoom" class="control-button">⟲</button>
+                </div>
+                <div id="graphContainer" class="graph-container"></div>
+                <div id="nodeTooltip" class="node-tooltip hidden"></div>
+            </div>
+        </div>
+
+        <!-- Code Review Panel -->
+        <div id="reviewPanel" class="panel hidden">
+            <div class="review-container">
+                <div class="filter-bar">
+                    <button class="filter-button active" data-filter="all">All</button>
+                    <button class="filter-button" data-filter="high">High+</button>
+                    <button class="filter-button" data-filter="critical">Critical</button>
+                </div>
+                <div id="findingsList" class="findings-list"></div>
+                <div id="emptyReview" class="empty-state hidden">
+                    <p>🎉 No code review issues found!</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Documentation Panel -->
+        <div id="docsPanel" class="panel hidden">
+            <div class="docs-container">
+                <div class="docs-tabs">
+                    <button class="docs-tab active" data-tab="docs">Documentation</button>
+                    <button class="docs-tab" data-tab="tests">Test Stubs</button>
+                </div>
+                <div id="docsContent" class="docs-content"></div>
+                <div id="testsContent" class="docs-content hidden"></div>
+            </div>
+        </div>
+
+        <!-- Security Panel -->
+        <div id="securityPanel" class="panel hidden">
+            <div class="security-container">
+                <div class="security-section">
+                    <h3>🔒 Security Issues</h3>
+                    <div id="securityIssues" class="security-list"></div>
+                    <div id="emptySecurityIssues" class="empty-state hidden">
+                        <p>🎉 No security issues found!</p>
+                    </div>
+                </div>
+                <div class="security-section">
+                    <h3>⚡ Modernization Opportunities</h3>
+                    <div id="modernizationList" class="security-list"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Load D3.js for architecture graph -->
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+    
+    <!-- Main JavaScript -->
+    <script src="main.js"></script>
+</body>
+</html>
