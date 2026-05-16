@@ -107,9 +107,6 @@ yarn-error.log*
 *.tgz
 .yarn-integrity
 
-# Bob sessions
-bob_sessions/
-
 # Jupyter Notebook
 .ipynb_checkpoints
 *.ipynb
