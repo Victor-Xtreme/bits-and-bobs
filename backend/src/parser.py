@@ -151,7 +151,14 @@ async def parse_codebase(local_path: str, job_id: Optional[str] = None) -> Parse
         raise ValueError(f"Path is not a directory: {local_path}")
     
     # Get supported languages and limits
-    supported_languages = settings.get_supported_languages_list()
+    _lang_to_ext = {
+        'python': 'py', 'javascript': 'js', 'typescript': 'ts',
+        'java': 'java', 'go': 'go', 'rust': 'rs',
+    }
+    supported_languages = [
+        _lang_to_ext.get(lang, lang)
+        for lang in settings.get_supported_languages_list()
+    ]
     max_size = settings.get_max_file_size_bytes()
     
     # Collect and filter files

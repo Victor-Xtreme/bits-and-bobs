@@ -13,30 +13,53 @@ from .config import settings
 
 logger = logging.getLogger(__name__)
 
+IAM_TOKEN_URL = "https://iam.cloud.ibm.com/identity/token"
+
 
 class OrchestrateClient:
     """
     Client for interacting with WatsonX Orchestrate agents.
     Handles API calls, error handling, and response parsing.
     """
-    
+
     def __init__(self):
         """Initialize the Orchestrate client with configuration from settings."""
         self.api_key = settings.orchestrate_api_key
         self.base_url = settings.orchestrate_url.rstrip('/')
         self.timeout = settings.orchestrate_timeout
-        
+        self._iam_token: Optional[str] = None
+
         # Agent IDs
         self.architect_agent_id = settings.orchestrate_agent_architect_id
         self.reviewer_agent_id = settings.orchestrate_agent_reviewer_id
         self.documenter_agent_id = settings.orchestrate_agent_documenter_id
         self.hardener_agent_id = settings.orchestrate_agent_hardener_id
-        
-        # HTTP client configuration
-        self.headers = {
-            "Authorization": f"Bearer {self.api_key}",
+        self.environment_id = settings.orchestrate_environment_id
+        self.instance_id = settings.orchestrate_instance_id
+
+    async def _get_iam_token(self) -> str:
+        """Exchange IBM Cloud API key for an IAM Bearer token."""
+        if self._iam_token:
+            return self._iam_token
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                IAM_TOKEN_URL,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                data={
+                    "grant_type": "urn:ibm:params:oauth:grant-type:apikey",
+                    "apikey": self.api_key,
+                }
+            )
+            if response.status_code != 200:
+                raise ValueError(f"IAM token exchange failed ({response.status_code}): {response.text[:300]}")
+            self._iam_token = response.json()["access_token"]
+            return self._iam_token
+
+    def _auth_headers(self, token: str) -> Dict[str, str]:
+        return {
+            "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
-            "Accept": "application/json"
+            "Accept": "application/json",
         }
     
     async def _call_agent(
@@ -61,54 +84,59 @@ class OrchestrateClient:
             ValueError: For authentication or API errors
             ConnectionError: For network connectivity issues
         """
-        url = f"{self.base_url}/agents/{agent_id}/invoke"
-        
+        url = f"{self.base_url}/instances/{self.instance_id}/v1/orchestrate/{agent_id}/chat/completions"
         payload = {
-            "input": prompt,
-            "parameters": {
-                "model_id": settings.orchestrate_model_id,
-                "max_tokens": 4000,
-                "temperature": 0.1,
-                "top_p": 1.0
-            }
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False
         }
-        
+
         logger.info(f"Calling {agent_name} agent (ID: {agent_id})")
-        
+
         try:
+            token = await self._get_iam_token()
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
                     url,
-                    headers=self.headers,
+                    headers=self._auth_headers(token),
                     json=payload
                 )
-                
-                # Check for HTTP errors
+
                 if response.status_code == 401:
-                    raise ValueError("Orchestrate authentication failed - check API key")
+                    self._iam_token = None
+                    raise ValueError(f"Authentication failed (401). URL: {url} | {response.text[:300]}")
                 elif response.status_code == 404:
-                    raise ValueError(f"Agent {agent_id} not found - check agent ID")
+                    raise ValueError(f"Agent endpoint not found (404). URL: {url} | {response.text[:300]}")
                 elif response.status_code >= 500:
-                    raise ConnectionError(f"Orchestrate server error: {response.status_code}")
+                    raise ConnectionError(f"Server error {response.status_code}. URL: {url} | {response.text[:300]}")
                 elif response.status_code != 200:
-                    raise ValueError(f"Orchestrate API error: {response.status_code} - {response.text}")
-                
-                # Parse response
+                    raise ValueError(f"API error {response.status_code}. URL: {url} | {response.text[:300]}")
+
+                logger.info(f"{agent_name} raw response ({response.status_code}): {response.text[:500]}")
                 result = response.json()
-                
-                # Extract the generated text from the response
-                # The exact structure may vary based on Orchestrate's API
-                if "output" in result:
-                    return result["output"]
+                logger.info(f"{agent_name} response keys: {list(result.keys())}")
+
+                if "choices" in result:
+                    return result["choices"][0]["message"]["content"]
+                elif "output" in result:
+                    out = result["output"]
+                    return out if isinstance(out, str) else json.dumps(out)
+                elif "content" in result:
+                    content = result["content"]
+                    if isinstance(content, list):
+                        texts = [c.get("text", "") for c in content if isinstance(c, dict)]
+                        return " ".join(texts)
+                    return content if isinstance(content, str) else json.dumps(content)
+                elif "message" in result:
+                    m = result["message"]
+                    if isinstance(m, dict):
+                        return m.get("content", json.dumps(m))
+                    return m if isinstance(m, str) else json.dumps(m)
                 elif "text" in result:
                     return result["text"]
-                elif "response" in result:
-                    return result["response"]
                 else:
-                    # Fallback: return the entire result as JSON string
                     logger.warning(f"Unexpected response structure from {agent_name}: {result}")
                     return json.dumps(result)
-                
+
         except httpx.TimeoutException:
             logger.error(f"{agent_name} agent request timed out")
             raise TimeoutError(f"{agent_name} agent request timed out after {self.timeout}s")
