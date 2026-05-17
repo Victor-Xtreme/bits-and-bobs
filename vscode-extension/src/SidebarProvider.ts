@@ -143,7 +143,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     private _retryCount: number = 0;
     private readonly _maxRetries: number = 3;
 
-    constructor(private readonly _extensionUri: vscode.Uri) {}
+    constructor(
+        private readonly _extensionUri: vscode.Uri,
+        private readonly _statusBarItem: vscode.StatusBarItem
+    ) {}
+
+    /**
+     * Public method to trigger analysis (called from extension.ts)
+     */
+    public triggerAnalysis() {
+        this._analyzeWorkspace();
+    }
 
     public resolveWebviewView(webviewView: vscode.WebviewView) {
         this._view = webviewView;
@@ -171,17 +181,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
 
     private async _analyzeWorkspace() {
-        if (!this._view) {
-            return;
-        }
-
         // Get workspace folder path
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (!workspaceFolders || workspaceFolders.length === 0) {
-            this._view.webview.postMessage({
-                type: 'error',
-                message: 'No workspace folder open'
-            });
+            this._statusBarItem.text = '$(error) RepoSense: Error';
+            if (this._view) {
+                this._view.webview.postMessage({
+                    type: 'error',
+                    message: 'No workspace folder open'
+                });
+            }
             return;
         }
 
@@ -193,6 +202,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 type: 'loading',
                 step: 'Starting analysis...'
             });
+            // Update status bar to analyzing
+            this._statusBarItem.text = '$(sync~spin) RepoSense: Analyzing...';
+
+            // Send initial status to webview if available
+            if (this._view) {
+                this._view.webview.postMessage({
+                    type: 'status',
+                    message: 'Starting analysis...'
+                });
+            }
 
             const config = getConfig();
             
@@ -221,10 +240,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             this._startPolling(jobId);
 
         } catch (error) {
-            this._view.webview.postMessage({
-                type: 'error',
-                message: `Failed to start analysis: ${error instanceof Error ? error.message : String(error)}`
-            });
+            this._statusBarItem.text = '$(error) RepoSense: Error';
+            if (this._view) {
+                this._view.webview.postMessage({
+                    type: 'error',
+                    message: `Failed to start analysis: ${error instanceof Error ? error.message : String(error)}`
+                });
+            }
         }
     }
 
@@ -285,7 +307,29 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 this._view.webview.postMessage({
                     type: 'results',
                     data: result
+                // Update status bar with score
+                this._statusBarItem.text = `$(graph) RepoSense: Score ${result.score.score}/100`;
+
+                // Show completion notification
+                vscode.window.showInformationMessage(
+                    `RepoSense: Analysis complete — Score ${result.score.score}/100`,
+                    'View Details'
+                ).then(selection => {
+                    if (selection === 'View Details') {
+                        vscode.commands.executeCommand('reposense-sidebar.focus');
+                    }
                 });
+
+                // Send completion message with health score from payload.score.score
+                if (this._view) {
+                    this._view.webview.postMessage({
+                        type: 'complete',
+                        healthScore: result.score.score,
+                        grade: result.score.grade,
+                        summary: result.score.summary,
+                        result: result
+                    });
+                }
             } else if (apiResponse.type === 'error' && apiResponse.payload) {
                 // Analysis failed
                 const error = apiResponse.payload as AnalysisError;
@@ -296,10 +340,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     this._pollingInterval = undefined;
                 }
 
-                this._view.webview.postMessage({
-                    type: 'error',
-                    message: `${error.stage}: ${error.message} (${error.code})`
-                });
+                // Update status bar to error
+                this._statusBarItem.text = '$(error) RepoSense: Error';
+
+                if (this._view) {
+                    this._view.webview.postMessage({
+                        type: 'error',
+                        message: `${error.stage}: ${error.message} (${error.code})`
+                    });
+                }
             }
             // If type is 'request', continue polling (analysis still in progress)
 
@@ -314,10 +363,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     this._pollingInterval = undefined;
                 }
 
-                this._view.webview.postMessage({
-                    type: 'error',
-                    message: `Failed to check results after ${this._maxRetries} retries: ${error instanceof Error ? error.message : String(error)}`
-                });
+                // Update status bar to error
+                this._statusBarItem.text = '$(error) RepoSense: Error';
+
+                if (this._view) {
+                    this._view.webview.postMessage({
+                        type: 'error',
+                        message: `Failed to check results after ${this._maxRetries} retries: ${error instanceof Error ? error.message : String(error)}`
+                    });
+                }
             }
             // Otherwise, continue polling and retry
         }
