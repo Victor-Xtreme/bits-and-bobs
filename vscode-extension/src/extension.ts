@@ -33,10 +33,10 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    // Register refresh command
+    // Register refresh command — always force a fresh analysis
     context.subscriptions.push(
         vscode.commands.registerCommand('reposense.refresh', () => {
-            sidebarProvider.triggerAnalysis();
+            sidebarProvider.triggerAnalysis(true);
         })
     );
 
@@ -49,11 +49,10 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    // Listen to workspace folder changes
+    // Listen to workspace folder changes — always force fresh analysis
     context.subscriptions.push(
         vscode.workspace.onDidChangeWorkspaceFolders(() => {
-            // Automatically re-run analysis when workspace folder changes
-            sidebarProvider.triggerAnalysis();
+            sidebarProvider.triggerAnalysis(true);
         })
     );
 }

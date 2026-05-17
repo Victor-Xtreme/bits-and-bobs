@@ -52,20 +52,20 @@ function showError(message) {
 
 function showResults(data) {
     hideAllStates();
-    
+
     // Store data for lazy rendering
     analysisData = data;
-    
+
     // Render panels that are immediately visible
-    renderHealthPanel(data.health);
+    renderHealthPanel(data.score);
     // Architecture panel will be rendered lazily when user switches to it
     renderReviewPanel(data.review);
-    renderDocsPanel(data.documentation);
+    renderDocsPanel(data.docs);
     renderSecurityPanel(data.security);
-    
+
     // Update badges
     updateBadges(data);
-    
+
     // Show the health panel by default
     switchPanel('health');
 }
@@ -85,8 +85,8 @@ function updateBadges(data) {
         reviewBadge.style.display = count > 0 ? 'inline-block' : 'none';
     }
     
-    if (securityBadge && data.security && data.security.issues) {
-        const count = data.security.issues.length;
+    if (securityBadge && data.security && data.security.security) {
+        const count = data.security.security.length;
         securityBadge.textContent = count > 0 ? count : '';
         securityBadge.style.display = count > 0 ? 'inline-block' : 'none';
     }
@@ -152,8 +152,9 @@ function renderHealthPanel(health) {
     
     // Update priorities
     priorityList.innerHTML = '';
-    if (health.priorities && health.priorities.length > 0) {
-        health.priorities.forEach(priority => {
+    const priorities = health.top_priorities || health.priorities || [];
+    if (priorities.length > 0) {
+        priorities.forEach(priority => {
             const li = document.createElement('li');
             li.textContent = priority;
             priorityList.appendChild(li);
@@ -219,7 +220,7 @@ function renderReviewPanel(review) {
                 <span class="severity-badge ${finding.severity.toLowerCase()}">${finding.severity}</span>
                 <span class="finding-location">${finding.file}:${finding.line}</span>
             </div>
-            <div class="finding-description">${finding.message}</div>
+            <div class="finding-description">${finding.issue}</div>
             <div class="finding-details">
                 <strong>Suggestion:</strong>
                 <p>${finding.suggestion || 'No suggestion available'}</p>
@@ -281,48 +282,51 @@ function renderSecurityPanel(security) {
     const emptySecurityIssues = document.getElementById('emptySecurityIssues');
     const modernizationList = document.getElementById('modernizationList');
     
-    // Render security issues
-    if (security.issues && security.issues.length > 0) {
+    // Render security issues (backend field: security.security)
+    const securityItems = security.security || security.issues || [];
+    if (securityItems.length > 0) {
         emptySecurityIssues.classList.add('hidden');
         securityIssues.innerHTML = '';
-        
-        security.issues.forEach((issue, index) => {
+
+        securityItems.forEach((issue, index) => {
             const item = document.createElement('div');
             item.className = 'security-item';
             if (index === 0) item.classList.add('fix-first');
-            
+
+            const badge = issue.severity || issue.effort || 'MEDIUM';
             item.innerHTML = `
                 <div class="security-item-header">
-                    ${index === 0 ? '<span style="color: var(--rs-red); font-weight: 600;">⚠️ Fix This First</span>' : ''}
-                    <span class="effort-badge ${issue.effort.toLowerCase()}">${issue.effort}</span>
+                    ${index === 0 ? '<span style="color: var(--rs-red); font-weight: 600;">Fix This First</span>' : ''}
+                    <span class="effort-badge ${badge.toLowerCase()}">${badge}</span>
                 </div>
-                <p><strong>${issue.title}</strong></p>
-                <p style="margin-top: 8px; color: var(--vscode-descriptionForeground);">${issue.description}</p>
+                <p><strong>${issue.issue || issue.title || ''}</strong></p>
+                <p style="margin-top: 8px; color: var(--vscode-descriptionForeground);">${issue.fix || issue.description || ''}</p>
+                ${issue.file ? `<p style="margin-top: 4px; font-size: 11px; opacity: 0.7;">${issue.file}</p>` : ''}
             `;
-            
+
             securityIssues.appendChild(item);
         });
     } else {
         emptySecurityIssues.classList.remove('hidden');
         securityIssues.innerHTML = '';
     }
-    
+
     // Render modernization
     if (security.modernization && security.modernization.length > 0) {
         modernizationList.innerHTML = '';
-        
-        security.modernization.forEach(item => {
+
+        security.modernization.forEach(mod => {
             const div = document.createElement('div');
             div.className = 'security-item';
-            
+
             div.innerHTML = `
                 <div class="security-item-header">
-                    <span class="effort-badge ${item.effort.toLowerCase()}">${item.effort}</span>
+                    <span class="effort-badge ${(mod.effort || 'medium').toLowerCase()}">${mod.effort || ''}</span>
                 </div>
-                <p><strong>${item.title}</strong></p>
-                <p style="margin-top: 8px; color: var(--vscode-descriptionForeground);">${item.description}</p>
+                <p><strong>${mod.pattern || mod.title || ''}</strong></p>
+                <p style="margin-top: 8px; color: var(--vscode-descriptionForeground);">${mod.suggestion || mod.description || ''}</p>
             `;
-            
+
             modernizationList.appendChild(div);
         });
     }
@@ -811,6 +815,7 @@ let graphRendered = false; // Track if architecture graph has been rendered
 document.addEventListener('DOMContentLoaded', () => {
     initializeEventListeners();
     showLoadingState();
+    vscode.postMessage({ type: 'analyzeWorkspace' });
 });
 
 // Message listener from extension
