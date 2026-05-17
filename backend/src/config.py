@@ -47,7 +47,7 @@ class Settings(BaseSettings):
             raise ValueError('watsonx_project_id appears to be a placeholder value')
         return v.strip()
     watsonx_url: str = "https://us-south.ml.cloud.ibm.com"
-    watsonx_model_id: str = "ibm/granite-8b-code-instruct"
+    watsonx_model_id: str = "openai/gpt-oss-120b"
 
     # WatsonX Orchestrate Configuration
     orchestrate_api_key: str = ""
