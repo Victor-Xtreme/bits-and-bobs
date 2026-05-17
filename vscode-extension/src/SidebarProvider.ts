@@ -176,12 +176,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         webviewView.webview.onDidReceiveMessage(async (data: { type: string }) => {
             switch (data.type) {
                 case 'ready': {
-                    const status = await this._checkBackendConfig();
-                    // If the backend is not configured or unavailable, show setup/dashboard
-                    if (status !== 'configured') {
-                        webviewView.webview.postMessage({ type: 'setup' });
-                        return;
-                    }
                     const currentPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
                     if (currentPath && this._cachedWorkspacePath === currentPath && this._cachedResult) {
                         this._handleResult(this._cachedResult);
@@ -199,29 +193,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 case 'openFullView':
                     this._openEditorPanel();
                     break;
-                case 'saveConfig': {
-                    const msgData = data as { type: string; data: Record<string, string> };
-                    try {
-                        await this._saveConfig(msgData.data);
-                        const status = await this._checkBackendConfig();
-                        if (status === 'configured') {
-                            const currentPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-                            if (currentPath) {
-                                await this._analyzeWorkspace(false);
-                            } else {
-                                webviewView.webview.postMessage({ type: 'idle' });
-                            }
-                        } else {
-                            webviewView.webview.postMessage({ type: 'setup' });
-                        }
-                    } catch (error) {
-                        webviewView.webview.postMessage({
-                            type: 'error',
-                            message: `Failed to save configuration: ${error instanceof Error ? error.message : String(error)}`
-                        });
-                    }
-                    break;
-                }
+
             }
         });
     }
@@ -254,47 +226,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         });
     }
 
-    private async _checkBackendConfig(): Promise<'configured' | 'not_configured' | 'unavailable'> {
-        try {
-            const config = getConfig();
-            const response = await fetch(`${config.backendUrl}/config/status`, {
-                timeout: config.requestTimeoutMs
-            });
-            if (!response.ok) { return 'unavailable'; }
-            const data = await response.json() as { configured: boolean };
-            return data.configured ? 'configured' : 'not_configured';
-        } catch {
-            return 'unavailable';
-        }
-    }
 
-    private async _saveConfig(configData: Record<string, string>) {
-        const config = getConfig();
-        const response = await fetch(`${config.backendUrl}/config/setup`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(configData),
-            timeout: config.requestTimeoutMs
-        });
-        if (!response.ok) {
-            const text = await response.text();
-            throw new Error(`HTTP ${response.status}: ${text}`);
-        }
-    }
 
     private async _analyzeWorkspace(force: boolean = false) {
-        const backendStatus = await this._checkBackendConfig();
-        if (backendStatus !== 'configured') {
-            this._statusBarItem.text = '$(error) RepoSense: Setup Required';
-            if (this._view) {
-                this._view.webview.postMessage({ type: 'setup' });
-                this._view.webview.postMessage({
-                    type: 'error',
-                    message: 'Backend credentials are not configured. Complete setup in the sidebar and try again.'
-                });
-            }
-            return;
-        }
 
         const analysisPath = await this._resolveAnalysisPath();
         if (!analysisPath) {

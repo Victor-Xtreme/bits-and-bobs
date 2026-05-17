@@ -28,7 +28,7 @@ const vscode = __importStar(require("vscode"));
 function getConfig() {
     const config = vscode.workspace.getConfiguration('reposense');
     return {
-        backendUrl: config.get('backendUrl', 'http://localhost:8000'),
+        backendUrl: config.get('backendUrl', 'https://bits-and-bobs-deployment-1.onrender.com'),
         remoteRepoUrl: config.get('remoteRepoUrl', ''),
         requestTimeoutMs: config.get('requestTimeoutMs', 30000),
         pollingIntervalMs: config.get('pollingIntervalMs', 2000),

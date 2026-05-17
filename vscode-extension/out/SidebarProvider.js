@@ -61,12 +61,6 @@ class SidebarProvider {
         webviewView.webview.onDidReceiveMessage(async (data) => {
             switch (data.type) {
                 case 'ready': {
-                    const status = await this._checkBackendConfig();
-                    // If the backend is not configured or unavailable, show setup/dashboard
-                    if (status !== 'configured') {
-                        webviewView.webview.postMessage({ type: 'setup' });
-                        return;
-                    }
                     const currentPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
                     if (currentPath && this._cachedWorkspacePath === currentPath && this._cachedResult) {
                         this._handleResult(this._cachedResult);
@@ -86,32 +80,6 @@ class SidebarProvider {
                 case 'openFullView':
                     this._openEditorPanel();
                     break;
-                case 'saveConfig': {
-                    const msgData = data;
-                    try {
-                        await this._saveConfig(msgData.data);
-                        const status = await this._checkBackendConfig();
-                        if (status === 'configured') {
-                            const currentPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-                            if (currentPath) {
-                                await this._analyzeWorkspace(false);
-                            }
-                            else {
-                                webviewView.webview.postMessage({ type: 'idle' });
-                            }
-                        }
-                        else {
-                            webviewView.webview.postMessage({ type: 'setup' });
-                        }
-                    }
-                    catch (error) {
-                        webviewView.webview.postMessage({
-                            type: 'error',
-                            message: `Failed to save configuration: ${error instanceof Error ? error.message : String(error)}`
-                        });
-                    }
-                    break;
-                }
             }
         });
     }
@@ -135,48 +103,7 @@ class SidebarProvider {
             }
         });
     }
-    async _checkBackendConfig() {
-        try {
-            const config = (0, config_1.getConfig)();
-            const response = await (0, node_fetch_1.default)(`${config.backendUrl}/config/status`, {
-                timeout: config.requestTimeoutMs
-            });
-            if (!response.ok) {
-                return 'unavailable';
-            }
-            const data = await response.json();
-            return data.configured ? 'configured' : 'not_configured';
-        }
-        catch {
-            return 'unavailable';
-        }
-    }
-    async _saveConfig(configData) {
-        const config = (0, config_1.getConfig)();
-        const response = await (0, node_fetch_1.default)(`${config.backendUrl}/config/setup`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(configData),
-            timeout: config.requestTimeoutMs
-        });
-        if (!response.ok) {
-            const text = await response.text();
-            throw new Error(`HTTP ${response.status}: ${text}`);
-        }
-    }
     async _analyzeWorkspace(force = false) {
-        const backendStatus = await this._checkBackendConfig();
-        if (backendStatus !== 'configured') {
-            this._statusBarItem.text = '$(error) RepoSense: Setup Required';
-            if (this._view) {
-                this._view.webview.postMessage({ type: 'setup' });
-                this._view.webview.postMessage({
-                    type: 'error',
-                    message: 'Backend credentials are not configured. Complete setup in the sidebar and try again.'
-                });
-            }
-            return;
-        }
         const analysisPath = await this._resolveAnalysisPath();
         if (!analysisPath) {
             this._statusBarItem.text = '$(error) RepoSense: Error';
