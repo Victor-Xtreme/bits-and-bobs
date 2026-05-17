@@ -4,9 +4,6 @@ import { getConfig } from './config';
 import * as fs from 'fs';
 import * as path from 'path';
 
-// USE_MOCK flag - set to true to use mock data instead of real API
-const USE_MOCK = true;
-
 // Backend API Models (matching models.py)
 type PayloadType = 'request' | 'result' | 'error';
 type StepStatus = 'done' | 'active' | 'pending';
@@ -177,204 +174,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     break;
             }
         });
-
-        // Auto-start analysis when USE_MOCK is true
-        if (USE_MOCK) {
-            setTimeout(() => {
-                this._analyzeWorkspace();
-            }, 100);
-        }
     }
 
     public revive(panel: vscode.WebviewView) {
         this._view = panel;
     }
-    private _generateMockData(): AnalysisResult {
-        return {
-            score: {
-                score: 74,
-                grade: 'B',
-                breakdown: {
-                    quality: 72,
-                    security: 68,
-                    documentation: 75,
-                    architecture: 81
-                },
-                summary: 'Codebase is moderately healthy with some areas for improvement',
-                top_priorities: [
-                    'Add input validation',
-                    'Document 12 functions',
-                    'Update Werkzeug imports'
-                ]
-            },
-            architecture: {
-                nodes: [
-                    { id: 'main.py', label: 'main.py', type: 'entry', description: 'Main application entry point' },
-                    { id: 'config.py', label: 'config.py', type: 'config', description: 'Configuration module' },
-                    { id: 'parser.py', label: 'parser.py', type: 'service', description: 'Code parser service' },
-                    { id: 'orchestrate.py', label: 'orchestrate.py', type: 'service', description: 'Agent orchestration' },
-                    { id: 'watsonx.py', label: 'watsonx.py', type: 'service', description: 'WatsonX integration' },
-                    { id: 'utils/logger.py', label: 'logger.py', type: 'util', description: 'Logging utilities' }
-                ],
-                edges: [
-                    { source: 'main.py', target: 'config.py', relationship: 'imports' },
-                    { source: 'main.py', target: 'orchestrate.py', relationship: 'calls' },
-                    { source: 'orchestrate.py', target: 'parser.py', relationship: 'calls' },
-                    { source: 'orchestrate.py', target: 'watsonx.py', relationship: 'calls' },
-                    { source: 'parser.py', target: 'utils/logger.py', relationship: 'imports' }
-                ]
-            },
-            review: {
-                findings: [
-                    {
-                        file: 'src/main.py',
-                        line: 45,
-                        severity: 'HIGH',
-                        issue: 'Missing input validation for user-provided path',
-                        suggestion: 'Add path validation to prevent directory traversal attacks'
-                    },
-                    {
-                        file: 'src/parser.py',
-                        line: 123,
-                        severity: 'MEDIUM',
-                        issue: 'Exception handling too broad',
-                        suggestion: 'Catch specific exceptions instead of bare except'
-                    },
-                    {
-                        file: 'src/watsonx.py',
-                        line: 67,
-                        severity: 'LOW',
-                        issue: 'Magic number used without explanation',
-                        suggestion: 'Extract magic number to named constant'
-                    }
-                ]
-            },
-            docs: {
-                docs: [
-                    {
-                        function_name: 'parse_file',
-                        description: 'Parses a Python file and extracts its AST structure',
-                        params: [
-                            { name: 'file_path', type: 'str', description: 'Path to the file to parse' },
-                            { name: 'encoding', type: 'str', description: 'File encoding (default: utf-8)' }
-                        ],
-                        returns: 'Dict containing parsed AST nodes and metadata',
-                        example: 'result = parse_file("main.py", encoding="utf-8")'
-                    },
-                    {
-                        function_name: 'analyze_dependencies',
-                        description: 'Analyzes import dependencies in the codebase',
-                        params: [
-                            { name: 'root_path', type: 'str', description: 'Root directory to analyze' }
-                        ],
-                        returns: 'Graph of dependencies between modules',
-                        example: 'deps = analyze_dependencies("/path/to/project")'
-                    }
-                ],
-                tests: [
-                    {
-                        function_name: 'parse_file',
-                        test_cases: [
-                            {
-                                description: 'Should parse valid Python file',
-                                input: 'valid_file.py',
-                                expected: 'AST with function definitions'
-                            },
-                            {
-                                description: 'Should handle syntax errors gracefully',
-                                input: 'invalid_syntax.py',
-                                expected: 'Error with line number'
-                            }
-                        ]
-                    }
-                ]
-            },
-            security: {
-                security: [
-                    {
-                        issue: 'Deprecated Werkzeug imports detected',
-                        severity: 'MEDIUM',
-                        file: 'src/main.py',
-                        fix: 'Update to use werkzeug.security instead of werkzeug.contrib'
-                    },
-                    {
-                        issue: 'Hardcoded credentials in configuration',
-                        severity: 'CRITICAL',
-                        file: 'src/config.py',
-                        fix: 'Move credentials to environment variables'
-                    }
-                ],
-                modernization: [
-                    {
-                        pattern: 'Using % string formatting',
-                        suggestion: 'Migrate to f-strings for better readability',
-                        effort: 'LOW'
-                    },
-                    {
-                        pattern: 'Type hints missing on 15 functions',
-                        suggestion: 'Add type hints for better IDE support',
-                        effort: 'MEDIUM'
-                    }
-                ]
-            }
-        };
-    }
-
-    private async _simulateMockProgress() {
-        const steps = [
-            'Reading workspace files',
-            'Parsing code structure',
-            'Architect agent running',
-            'Architect agent complete',
-            'Reviewer agent complete',
-            'Documenter agent complete',
-            'Hardener agent complete'
-        ];
-
-        for (let i = 0; i < steps.length; i++) {
-            if (this._view) {
-                this._view.webview.postMessage({
-                    type: 'loading',
-                    step: steps[i]
-                });
-
-                this._view.webview.postMessage({
-                    type: 'progress',
-                    data: {
-                        percentage: ((i + 1) / steps.length) * 100,
-                        step: steps[i]
-                    }
-                });
-            }
-
-            await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-
-        const mockData = this._generateMockData();
-        if (this._view) {
-            this._view.webview.postMessage({
-                type: 'results',
-                data: {
-                    health: {
-                        score: mockData.score.score,
-                        grade: mockData.score.grade,
-                        summary: mockData.score.summary,
-                        priorities: mockData.score.top_priorities
-                    },
-                    architecture: mockData.architecture,
-                    review: mockData.review,
-                    documentation: mockData.docs,
-                    security: {
-                        issues: mockData.security.security,
-                        modernization: mockData.security.modernization
-                    }
-                }
-            });
-        }
-
-        this._statusBarItem.text = `$(graph) RepoSense: Score ${mockData.score.score}/100`;
-    }
-
 
     private async _analyzeWorkspace() {
         // Get workspace folder path
@@ -392,22 +196,22 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
         const workspacePath = workspaceFolders[0].uri.fsPath;
 
-        // Check if USE_MOCK is enabled
-        if (USE_MOCK) {
-            this._statusBarItem.text = '$(sync~spin) RepoSense: Analyzing...';
-            await this._simulateMockProgress();
-            return;
-        }
-
         try {
+            // Send initial status
+            if (this._view) {
+                this._view.webview.postMessage({
+                    type: 'loading',
+                    step: 'Starting analysis...'
+                });
+            }
             // Update status bar to analyzing
             this._statusBarItem.text = '$(sync~spin) RepoSense: Analyzing...';
 
             // Send initial status to webview if available
             if (this._view) {
                 this._view.webview.postMessage({
-                    type: 'loading',
-                    step: 'Starting analysis...'
+                    type: 'status',
+                    message: 'Starting analysis...'
                 });
             }
 
@@ -502,6 +306,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     this._pollingInterval = undefined;
                 }
 
+                this._view.webview.postMessage({
+                    type: 'results',
+                    data: result
+                });
                 // Update status bar with score
                 this._statusBarItem.text = `$(graph) RepoSense: Score ${result.score.score}/100`;
 
@@ -577,40 +385,36 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             return;
         }
 
-        // Send progress data to webview
-        if (this._view) {
-            this._view.webview.postMessage({
-                type: 'progress',
-                data: steps
-            });
-        }
+        const activeStep = steps.find(s => s.status === 'active') || steps[steps.length - 1];
+        const completed = steps.filter(s => s.status === 'done').length;
+        const percentage = steps.length > 0 ? Math.round((completed / steps.length) * 100) : 0;
+        const stepName = activeStep ? activeStep.name : 'Processing...';
+
+        this._view.webview.postMessage({
+            type: 'progress',
+            data: {
+                percentage: percentage,
+                step: stepName
+            }
+        });
     }
 
     private _getHtmlForWebview(webview: vscode.Webview) {
-        // Read the webview HTML file
+        // Get paths to resources
         const htmlPath = vscode.Uri.joinPath(this._extensionUri, 'webview', 'main.html');
         const cssPath = vscode.Uri.joinPath(this._extensionUri, 'webview', 'styles.css');
         const jsPath = vscode.Uri.joinPath(this._extensionUri, 'webview', 'main.js');
-
+        
         // Convert to webview URIs
         const cssUri = webview.asWebviewUri(cssPath);
         const jsUri = webview.asWebviewUri(jsPath);
-
+        
+        // Read HTML file
         let html = fs.readFileSync(htmlPath.fsPath, 'utf8');
-
-        // Replace relative paths with webview URIs
+        
+        // Replace resource paths with webview URIs
         html = html.replace('href="styles.css"', `href="${cssUri}"`);
         html = html.replace('src="main.js"', `src="${jsUri}"`);
-
-        // Update CSP to allow the webview resources
-        const nonce = this._getNonce();
-        html = html.replace(
-            /<meta http-equiv="Content-Security-Policy"[^>]*>/,
-            `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline' https://cdn.jsdelivr.net; script-src 'nonce-${nonce}' https://cdn.jsdelivr.net; img-src ${webview.cspSource} https: data:; connect-src https:;">`
-        );
-
-        // Add nonce to script tags
-        html = html.replace(/<script/g, `<script nonce="${nonce}"`);
 
         return html;
     }

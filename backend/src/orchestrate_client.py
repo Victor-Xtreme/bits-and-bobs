@@ -6,6 +6,7 @@ Handles all interactions with IBM WatsonX Orchestrate agents
 import json
 import asyncio
 import logging
+import time
 from typing import Any, Dict, Optional
 import httpx
 
@@ -28,6 +29,7 @@ class OrchestrateClient:
         self.base_url = settings.orchestrate_url.rstrip('/')
         self.timeout = settings.orchestrate_timeout
         self._iam_token: Optional[str] = None
+        self._iam_token_expiry: float = 0.0
 
         # Agent IDs
         self.architect_agent_id = settings.orchestrate_agent_architect_id
@@ -38,8 +40,8 @@ class OrchestrateClient:
         self.instance_id = settings.orchestrate_instance_id
 
     async def _get_iam_token(self) -> str:
-        """Exchange IBM Cloud API key for an IAM Bearer token."""
-        if self._iam_token:
+        """Exchange IBM Cloud API key for an IAM Bearer token, refreshing when near expiry."""
+        if self._iam_token and time.time() < self._iam_token_expiry - 60:
             return self._iam_token
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
@@ -52,7 +54,10 @@ class OrchestrateClient:
             )
             if response.status_code != 200:
                 raise ValueError(f"IAM token exchange failed ({response.status_code}): {response.text[:300]}")
-            self._iam_token = response.json()["access_token"]
+            token_data = response.json()
+            self._iam_token = token_data["access_token"]
+            expires_in = token_data.get("expires_in", 3600)
+            self._iam_token_expiry = time.time() + expires_in
             return self._iam_token
 
     def _auth_headers(self, token: str) -> Dict[str, str]:
