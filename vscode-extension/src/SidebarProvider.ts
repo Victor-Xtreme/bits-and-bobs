@@ -279,6 +279,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
 
     private async _analyzeWorkspace(force: boolean = false) {
+        const status = await this._checkBackendConfig();
+        if (status === 'not_configured') {
+            if (this._view) {
+                this._view.webview.postMessage({ type: 'setup' });
+            }
+            return;
+        }
+
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (!workspaceFolders || workspaceFolders.length === 0) {
             this._statusBarItem.text = '$(error) RepoSense: Error';
