@@ -73,6 +73,8 @@ function showResults(data) {
 function showIdleState() {
     document.getElementById('loadingState').classList.add('hidden');
     document.getElementById('errorState').classList.add('hidden');
+    const setup = document.getElementById('setupState');
+    if (setup) setup.classList.add('hidden');
     document.querySelectorAll('.panel').forEach(p => p.classList.add('hidden'));
     const idle = document.getElementById('idleState');
     if (idle) idle.classList.remove('hidden');
@@ -83,6 +85,43 @@ function hideAllStates() {
     document.getElementById('errorState').classList.add('hidden');
     const idle = document.getElementById('idleState');
     if (idle) idle.classList.add('hidden');
+    const setup = document.getElementById('setupState');
+    if (setup) setup.classList.add('hidden');
+}
+
+function showSetupWizard() {
+    hideAllStates();
+    document.querySelectorAll('.panel').forEach(p => p.classList.add('hidden'));
+    document.getElementById('setupState').classList.remove('hidden');
+    showWizardStep(1);
+}
+
+function showWizardStep(step) {
+    [1, 2, 3].forEach(s => {
+        document.getElementById(`wizardStep${s}`).classList.toggle('hidden', s !== step);
+        const dot = document.getElementById(`stepDot${s}`);
+        if (dot) {
+            dot.classList.toggle('active', s === step);
+            dot.classList.toggle('done', s < step);
+        }
+    });
+}
+
+function collectWizardData() {
+    return {
+        watsonx_api_key:                document.getElementById('wApiKey').value.trim(),
+        watsonx_project_id:             document.getElementById('wProjectId').value.trim(),
+        watsonx_url:                    document.getElementById('wUrl').value.trim(),
+        watsonx_model_id:               document.getElementById('wModelId').value.trim(),
+        orchestrate_api_key:            document.getElementById('oApiKey').value.trim(),
+        orchestrate_url:                document.getElementById('oUrl').value.trim(),
+        orchestrate_instance_id:        document.getElementById('oInstanceId').value.trim(),
+        orchestrate_environment_id:     document.getElementById('oEnvId').value.trim(),
+        orchestrate_agent_architect_id: document.getElementById('oArchitectId').value.trim(),
+        orchestrate_agent_reviewer_id:  document.getElementById('oReviewerId').value.trim(),
+        orchestrate_agent_documenter_id:document.getElementById('oDocumenterId').value.trim(),
+        orchestrate_agent_hardener_id:  document.getElementById('oHardenerId').value.trim(),
+    };
 }
 
 function updateBadges(data) {
@@ -756,18 +795,22 @@ function renderNetworkGraph(architecture) {
         .selectAll('text')
         .data(graphNodes)
         .join('text')
-        .text(d => d.name)
-        .attr('font-size', 10)
-        .attr('dx', 15)
+        .text(d => d.label || d.id)
+        .attr('font-size', 11)
+        .attr('dx', 16)
         .attr('dy', 4)
-        .attr('fill', '#ffffff');
-    
+        .attr('fill', '#e4e4f0')
+        .style('paint-order', 'stroke')
+        .style('stroke', '#0d0d10')
+        .style('stroke-width', '3px')
+        .style('pointer-events', 'none');
+
     // Tooltip
     const tooltip = document.getElementById('nodeTooltip');
-    
+
     node.on('mouseover', (event, d) => {
         tooltip.innerHTML = `
-            <strong>${d.name}</strong><br>
+            <strong>${d.label || d.id}</strong><br>
             <small>Type: ${d.type}</small><br>
             ${d.description ? `<p style="margin-top: 8px; font-size: 12px;">${d.description}</p>` : ''}
         `;
@@ -861,6 +904,9 @@ window.addEventListener('message', event => {
         case 'error':
             showError(msg.message);
             break;
+        case 'setup':
+            showSetupWizard();
+            break;
     }
 });
 
@@ -932,6 +978,28 @@ function initializeEventListeners() {
         });
     });
     
+    // Setup wizard navigation
+    const wizardNext1 = document.getElementById('wizardNext1');
+    if (wizardNext1) { wizardNext1.addEventListener('click', () => showWizardStep(2)); }
+
+    const wizardBack2 = document.getElementById('wizardBack2');
+    if (wizardBack2) { wizardBack2.addEventListener('click', () => showWizardStep(1)); }
+
+    const wizardNext2 = document.getElementById('wizardNext2');
+    if (wizardNext2) { wizardNext2.addEventListener('click', () => showWizardStep(3)); }
+
+    const wizardBack3 = document.getElementById('wizardBack3');
+    if (wizardBack3) { wizardBack3.addEventListener('click', () => showWizardStep(2)); }
+
+    const wizardSave = document.getElementById('wizardSave');
+    if (wizardSave) {
+        wizardSave.addEventListener('click', () => {
+            const configData = collectWizardData();
+            vscode.postMessage({ type: 'saveConfig', data: configData });
+            showLoadingState('Saving configuration...');
+        });
+    }
+
     // Graph controls
     const zoomIn = document.getElementById('zoomIn');
     const zoomOut = document.getElementById('zoomOut');

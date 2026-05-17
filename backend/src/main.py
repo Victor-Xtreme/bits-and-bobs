@@ -11,6 +11,7 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from .models import (
     AnalyzeRequest,
@@ -21,6 +22,22 @@ from .models import (
     ErrorCode
 )
 from .config import settings
+from . import config as config_module
+
+
+class ConfigSetupRequest(BaseModel):
+    watsonx_api_key: str = ""
+    watsonx_project_id: str = ""
+    watsonx_url: str = ""
+    watsonx_model_id: str = ""
+    orchestrate_api_key: str = ""
+    orchestrate_url: str = ""
+    orchestrate_instance_id: str = ""
+    orchestrate_environment_id: str = ""
+    orchestrate_agent_architect_id: str = ""
+    orchestrate_agent_reviewer_id: str = ""
+    orchestrate_agent_documenter_id: str = ""
+    orchestrate_agent_hardener_id: str = ""
 from .jobs import (
     create_job,
     get_job,
@@ -257,12 +274,75 @@ async def delete_job(job_id: str):
 async def trigger_cleanup():
     """
     Manually trigger cleanup of old jobs.
-    
+
     Returns:
         Number of jobs removed
     """
     removed = cleanup_old_jobs()
     return {"removed": removed}
+
+
+@app.get("/config/status")
+async def config_status():
+    """Return whether all required credentials are configured."""
+    missing = config_module.settings.missing_fields()
+    return {
+        "configured": config_module.settings.is_configured(),
+        "missing_fields": missing
+    }
+
+
+@app.post("/config/setup")
+async def config_setup(body: ConfigSetupRequest):
+    """
+    Persist credentials to .env and reload settings in memory.
+    Only non-empty values are written; existing keys are preserved.
+    """
+    field_to_env = {
+        "watsonx_api_key":                 "WATSONX_API_KEY",
+        "watsonx_project_id":              "WATSONX_PROJECT_ID",
+        "watsonx_url":                     "WATSONX_URL",
+        "watsonx_model_id":                "WATSONX_MODEL_ID",
+        "orchestrate_api_key":             "ORCHESTRATE_API_KEY",
+        "orchestrate_url":                 "ORCHESTRATE_URL",
+        "orchestrate_instance_id":         "ORCHESTRATE_INSTANCE_ID",
+        "orchestrate_environment_id":      "ORCHESTRATE_ENVIRONMENT_ID",
+        "orchestrate_agent_architect_id":  "ORCHESTRATE_AGENT_ARCHITECT_ID",
+        "orchestrate_agent_reviewer_id":   "ORCHESTRATE_AGENT_REVIEWER_ID",
+        "orchestrate_agent_documenter_id": "ORCHESTRATE_AGENT_DOCUMENTER_ID",
+        "orchestrate_agent_hardener_id":   "ORCHESTRATE_AGENT_HARDENER_ID",
+    }
+
+    incoming = body.model_dump()
+
+    env_path = Path(__file__).parent.parent / ".env"
+    existing: dict[str, str] = {}
+    if env_path.exists():
+        for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, _, v = line.partition("=")
+            existing[k.strip().upper()] = v.strip()
+
+    for field, env_var in field_to_env.items():
+        value = incoming.get(field, "")
+        if isinstance(value, str) and value.strip():
+            existing[env_var] = value.strip()
+            os.environ[env_var] = value.strip()
+
+    env_path.write_text(
+        "\n".join(f"{k}={v}" for k, v in existing.items()) + "\n",
+        encoding="utf-8"
+    )
+
+    config_module.settings = config_module.Settings()
+
+    missing = config_module.settings.missing_fields()
+    return {
+        "configured": config_module.settings.is_configured(),
+        "missing_fields": missing
+    }
 
 
 if __name__ == "__main__":
