@@ -47,13 +47,13 @@ class Settings(BaseSettings):
             raise ValueError('watsonx_project_id appears to be a placeholder value')
         return v.strip()
     watsonx_url: str = "https://us-south.ml.cloud.ibm.com"
-    watsonx_model_id: str = "granite-3-8b-instruct"
+    watsonx_model_id: str = "ibm/granite-8b-code-instruct"
 
     # WatsonX Orchestrate Configuration
     orchestrate_api_key: str = ""
     orchestrate_url: str = ""
     orchestrate_timeout: int = Field(default=120, gt=0, le=3600)
-    orchestrate_model_id: str = "granite-3-8b-instruct"
+    orchestrate_model_id: str = "ibm/granite-8b-code-instruct"
     orchestrate_agent_architect_id: str = ""
     orchestrate_agent_reviewer_id: str = ""
     orchestrate_agent_documenter_id: str = ""
