@@ -496,4 +496,113 @@ async def _orchestrate_analysis_impl(job_id: str, local_path: str) -> None:
     except Exception as e:
         raise
 
+async def orchestrate_analysis_from_parsed(
+    job_id: str,
+    parsed_codebase: ParsedCodebase
+) -> None:
+    """
+    Entry point when the codebase was parsed client-side.
+    Identical to orchestrate_analysis but skips Stage 0 (parsing).
+
+    Args:
+        job_id: The job ID for tracking progress
+        parsed_codebase: Already-parsed codebase from the client
+    """
+    import asyncio
+
+    timeout = settings.analysis_timeout
+
+    try:
+        await asyncio.wait_for(
+            _orchestrate_analysis_from_parsed_impl(job_id, parsed_codebase),
+            timeout=timeout
+        )
+    except asyncio.TimeoutError:
+        logger.error(f"Analysis timed out after {timeout} seconds")
+        error = AnalysisError(
+            code=ErrorCode.AGENT_TIMEOUT,
+            message=f"Overall analysis timed out after {timeout} seconds",
+            stage="Overall orchestration"
+        )
+        set_job_error(job_id, error)
+    except Exception as e:
+        logger.error(f"Unexpected error in orchestration: {str(e)}", exc_info=True)
+        error = AnalysisError(
+            code=ErrorCode.UNKNOWN,
+            message=f"Unexpected error: {str(e)}",
+            stage="Unknown"
+        )
+        set_job_error(job_id, error)
+
+
+async def _orchestrate_analysis_from_parsed_impl(
+    job_id: str,
+    parsed_codebase: ParsedCodebase
+) -> None:
+    """
+    Internal implementation that accepts a pre-parsed codebase.
+    Stage 0 is skipped — it is immediately marked done.
+    Stages 1-5 are identical to _orchestrate_analysis_impl.
+    """
+    try:
+        # Stage 0: Skipped — mark done immediately
+        update_job_progress(job_id, 0, StepStatus.done)
+
+        # Stage 1: Generate architecture graph via ARCHITECT agent
+        architecture = await _run_stage_with_error_handling(
+            job_id, 1, "Analyzing architecture",
+            _generate_architecture, parsed_codebase
+        )
+        if architecture is None:
+            return
+
+        # Stage 2: Generate code review via REVIEWER agent
+        review = await _run_stage_with_error_handling(
+            job_id, 2, "Reviewing code quality",
+            _generate_review, parsed_codebase
+        )
+        if review is None:
+            return
+
+        # Stage 3: Generate documentation via DOCUMENTER agent
+        docs = await _run_stage_with_error_handling(
+            job_id, 3, "Generating documentation",
+            _generate_docs, parsed_codebase
+        )
+        if docs is None:
+            return
+
+        # Stage 4: Generate security report via HARDENER agent
+        security = await _run_stage_with_error_handling(
+            job_id, 4, "Scanning security",
+            _generate_security, parsed_codebase
+        )
+        if security is None:
+            return
+
+        # Stage 5: Compute health score via watsonx.ai
+        score = await _run_stage_with_error_handling(
+            job_id, 5, "Computing health score",
+            generate_score,
+            architecture=architecture,
+            review=review,
+            docs=docs,
+            security=security
+        )
+        if score is None:
+            return
+
+        result = AnalysisResult(
+            score=score,
+            architecture=architecture,
+            review=review,
+            docs=docs,
+            security=security
+        )
+
+        set_job_result(job_id, result)
+
+    except Exception as e:
+        raise
+
 # Made with Bob

@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     max_files_per_analysis: int = Field(default=1000, gt=0, le=100000)
     
     # Supported Languages
-    supported_languages: str = "py,js,ts,java,go,rs"
+    supported_languages: str = "py,js,ts,java,go,rs,c,cpp"
     
     # CORS Settings
     cors_origins: str = "http://localhost:3000,http://localhost:5173"

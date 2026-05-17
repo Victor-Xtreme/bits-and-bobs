@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .models import (
     AnalyzeRequest,
+    AnalyzeParsedRequest,
     ApiResponse,
     PayloadType,
     JobStatus,
@@ -28,7 +29,7 @@ from .jobs import (
     get_active_job_count,
     delete_job as delete_job_from_store
 )
-from .orchestrate import orchestrate_analysis
+from .orchestrate import orchestrate_analysis, orchestrate_analysis_from_parsed
 
 
 def validate_local_path(local_path: str) -> str:
@@ -181,6 +182,47 @@ async def analyze_codebase(
     )
     
     # Return immediate response with job_id and initial progress
+    return ApiResponse(
+        type=PayloadType.request,
+        job_id=job_id,
+        progress=job.progress,
+        payload=None
+    )
+
+
+@app.post("/analyze-parsed", response_model=ApiResponse)
+async def analyze_codebase_parsed(
+    request: AnalyzeParsedRequest,
+    background_tasks: BackgroundTasks
+) -> ApiResponse:
+    """
+    Start analysis from a pre-parsed codebase.
+    The client (VS Code extension) runs the file parsing locally and sends
+    the structured result here. The backend skips Stage 0 entirely.
+    No filesystem access is required.
+    """
+    # Check concurrent job limit
+    active_jobs = get_active_job_count()
+    if active_jobs >= settings.max_concurrent_jobs:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Maximum concurrent jobs ({settings.max_concurrent_jobs}) exceeded"
+        )
+
+    # Create new job
+    job_id = create_job()
+
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=500, detail="Failed to create job")
+
+    # Start background analysis with the pre-parsed codebase
+    background_tasks.add_task(
+        orchestrate_analysis_from_parsed,
+        job_id=job_id,
+        parsed_codebase=request.parsed_codebase
+    )
+
     return ApiResponse(
         type=PayloadType.request,
         job_id=job_id,

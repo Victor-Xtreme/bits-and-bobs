@@ -118,7 +118,6 @@ class ParsedFunction(BaseModel):
     id: str
     name: str
     parent_id: Optional[str] = None
-    parent_id: Optional[str] = None
     line_start: int
     line_end: int
     docstring: Optional[str] = None
@@ -135,7 +134,6 @@ class ParsedClass(BaseModel):
     """
     id: str
     name: str
-    parent_id: Optional[str] = None
     parent_id: Optional[str] = None
     line_start: int
     line_end: int
@@ -163,7 +161,9 @@ class ParsedCodebase(BaseModel):
     files: list[ParsedFile]
     import_graph: dict[str, list[str]]
 
-
+class AnalyzeParsedRequest(BaseModel):
+    """Request to analyze a pre-parsed codebase (parsing done client-side)"""
+    parsed_codebase: ParsedCodebase
 # ============================================================================
 # ARCHITECTURE GRAPH
 # ============================================================================

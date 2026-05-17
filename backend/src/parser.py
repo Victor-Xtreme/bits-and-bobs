@@ -232,6 +232,8 @@ async def parse_file(file_path: Path, base_path: Path) -> ParsedFile:
         return await parse_python_file(rel_path, content)
     elif language in ['javascript', 'typescript', 'js', 'ts']:
         return await parse_javascript_file(rel_path, content, language)
+    elif language in ['c', 'cpp', 'h', 'hpp']:
+        return await parse_c_file(rel_path, content, language)
     else:
         # For unsupported languages, return basic structure
         return ParsedFile(
@@ -351,6 +353,82 @@ def parse_python_function(node, rel_path: str, parent_id: Optional[str]) -> Pars
         params=params,
         returns=returns
     )
+
+async def parse_c_file(rel_path: str, content: str, language: str) -> ParsedFile:
+    """
+    Parse a C or C++ file using regular expressions.
+
+    Extracts:
+    - #include directives as imports
+    - struct and class definitions (C++ only) as classes
+    - Function definitions as functions
+
+    Args:
+        rel_path: Relative path to the file
+        content:  File content as a string
+        language: One of 'c', 'cpp', 'h', 'hpp'
+
+    Returns:
+        ParsedFile with extracted structures
+    """
+    import re
+
+    imports = []
+    classes = []
+    functions = []
+
+    # --- Includes ---
+    # Matches: #include <stdio.h>  or  #include "myfile.h"
+    include_pattern = r'#include\s+[<"]([^>"]+)[>"]'
+    for match in re.finditer(include_pattern, content):
+        imports.append(match.group(1))
+
+    # --- Classes and structs ---
+    # Matches: class Foo {  or  struct Bar {  (requires opening brace so
+    # forward declarations like "struct Foo;" are ignored)
+    class_pattern = r'(?:class|struct)\s+(\w+)\s*(?::[^{]*)?\{'
+    for match in re.finditer(class_pattern, content):
+        class_name = match.group(1)
+        line_num = content[:match.start()].count('\n') + 1
+        classes.append(ParsedClass(
+            id=f"{rel_path}::{class_name}",
+            name=class_name,
+            parent_id=None,
+            line_start=line_num,
+            line_end=line_num,
+            docstring=None,
+            bases=[]
+        ))
+
+    # --- Function definitions ---
+    # Matches a return type followed by a name, parentheses, and an opening
+    # brace. The negative lookahead skips control-flow keywords.
+    func_pattern = r'(?:^|\n)\s*(?!if|for|while|switch|else|do\b)(?:[\w:*&<>]+\s+)+(\w+)\s*\([^;)]*\)\s*(?:const\s*)?\{'
+    skip_names = {'if', 'for', 'while', 'switch', 'else', 'do'}
+    for match in re.finditer(func_pattern, content):
+        func_name = match.group(1)
+        if func_name in skip_names:
+            continue
+        line_num = content[:match.start()].count('\n') + 1
+        functions.append(ParsedFunction(
+            id=f"{rel_path}::{func_name}",
+            name=func_name,
+            parent_id=None,
+            line_start=line_num,
+            line_end=line_num,
+            docstring=None,
+            params=[],
+            returns=None
+        ))
+
+    return ParsedFile(
+        path=rel_path,
+        language=language,
+        imports=list(set(imports)),
+        classes=classes,
+        functions=functions
+    )
+
 
 
 async def parse_javascript_file(rel_path: str, content: str, language: str) -> ParsedFile:

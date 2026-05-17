@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import fetch from 'node-fetch';
 import { getConfig } from './config';
-import * as fs from 'fs';
+import * as fs from 'node:fs';
+import { parseWorkspace, ParsedCodebase } from './parser';
 
 // Backend API Models (matching models.py)
 type PayloadType = 'request' | 'result' | 'error';
@@ -223,54 +224,56 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
 
     private async _analyzeWorkspace(force: boolean = false) {
+        // 1. Validate workspace
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (!workspaceFolders || workspaceFolders.length === 0) {
-            this._statusBarItem.text = '$(error) RepoSense: Error';
-            if (this._view) {
-                this._view.webview.postMessage({
-                    type: 'error',
-                    message: 'No workspace folder open'
-                });
-            }
+            this._postError('No workspace folder open');
             return;
         }
 
         const workspacePath = workspaceFolders[0].uri.fsPath;
 
-        // Clear cache when switching folders
-        if (workspacePath !== this._cachedWorkspacePath) {
-            this._cachedResult = null;
+        // 2. Parse workspace locally
+        this._statusBarItem.text = '$(sync~spin) RepoSense: Parsing...';
+        this._postMessage({ type: 'loading', step: 'Parsing workspace locally...' });
+
+        let parsedCodebase: ParsedCodebase;
+        try {
+            parsedCodebase = await parseWorkspace(
+                workspacePath,
+                (done, total, file) => {
+                    const percentage = total > 0
+                        ? Math.round((done / total) * 100)
+                        : 0;
+                    this._postMessage({
+                        type: 'progress',
+                        data: {
+                            percentage,
+                            step: file ? `Parsing: ${file}` : 'Parsing complete',
+                        },
+                    });
+                }
+            );
+        } catch (error) {
+            this._postError(
+                `Failed to parse workspace: ${error instanceof Error ? error.message : String(error)}`
+            );
+            this._statusBarItem.text = '$(error) RepoSense: Error';
+            return;
         }
 
+        // 3. Send parsed codebase to backend
         try {
-            // Send initial status
-            if (this._view) {
-                this._view.webview.postMessage({
-                    type: 'loading',
-                    step: 'Starting analysis...'
-                });
-            }
-            // Update status bar to analyzing
             this._statusBarItem.text = '$(sync~spin) RepoSense: Analyzing...';
-
-            // Send initial status to webview if available
-            if (this._view) {
-                this._view.webview.postMessage({
-                    type: 'status',
-                    message: 'Starting analysis...'
-                });
-            }
+            this._postMessage({ type: 'status', message: 'Sending to analysis...' });
 
             const config = getConfig();
-            
-            // Send POST request to start analysis
-            const response = await fetch(`${config.backendUrl}/analyze`, {
+
+            const response = await fetch(`${config.backendUrl}/analyze-parsed`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ local_path: workspacePath }),
-                timeout: config.requestTimeoutMs
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ parsed_codebase: parsedCodebase }),
+                timeout: config.requestTimeoutMs,
             });
 
             if (!response.ok) {
@@ -281,20 +284,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             const data = await response.json() as ApiResponse;
             const jobId = data.job_id;
 
-            // Send initial progress update
+            // Send initial progress update then start polling
             this._updateProgress(data.progress);
-
-            // Start polling for results
             this._startPolling(jobId);
 
         } catch (error) {
+            this._postError(
+                `Failed to start analysis: ${error instanceof Error ? error.message : String(error)}`
+            );
             this._statusBarItem.text = '$(error) RepoSense: Error';
-            if (this._view) {
-                this._view.webview.postMessage({
-                    type: 'error',
-                    message: `Failed to start analysis: ${error instanceof Error ? error.message : String(error)}`
-                });
-            }
         }
     }
 
@@ -375,15 +373,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             this._pollingInterval = undefined;
         }
 
-        // Update status bar to error
-        this._statusBarItem.text = '$(error) RepoSense: Error';
-
-        if (this._view) {
-            this._view.webview.postMessage({
-                type: 'error',
-                message: `Failed to check results after ${this._maxRetries} retries: ${error instanceof Error ? error.message : String(error)}`
-            });
-        }
+        this._postError(
+            `Failed to check results after ${this._maxRetries} retries: ${error instanceof Error ? error.message : String(error)}`
+        );
     }
 
     private _handleResult(result: AnalysisResult) {
@@ -409,15 +401,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             }
         });
 
-        if (this._view) {
-            this._view.webview.postMessage({
-                type: 'complete',
-                healthScore: result.score.score,
-                grade: result.score.grade,
-                summary: result.score.summary,
-                result: result
-            });
-        }
+        this._postMessage({
+            type: 'complete',
+            healthScore: result.score.score,
+            grade: result.score.grade,
+            summary: result.score.summary,
+            result: result
+        });
     }
 
     private _handleAnalysisError(error: AnalysisError) {
@@ -427,14 +417,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             this._pollingInterval = undefined;
         }
 
-        this._statusBarItem.text = '$(error) RepoSense: Error';
-
-        if (this._view) {
-            this._view.webview.postMessage({
-                type: 'error',
-                message: `${error.stage}: ${error.message} (${error.code})`
-            });
-        }
+        this._postError(`${error.stage}: ${error.message} (${error.code})`);
     }
 
     private _updateProgress(steps: ProgressStep[]) {
@@ -474,6 +457,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         html = html.replace('src="main.js"', `src="${jsUri}"`);
 
         return html;
+    }
+
+    private _postError(message: string): void {
+        this._statusBarItem.text = '$(error) RepoSense: Error';
+        if (this._view) {
+            this._view.webview.postMessage({ type: 'error', message });
+        }
+    }
+
+    private _postMessage(msg: object): void {
+        if (this._view) {
+            this._view.webview.postMessage(msg);
+        }
     }
 
     private _getNonce() {

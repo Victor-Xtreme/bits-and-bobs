@@ -30,7 +30,8 @@ exports.SidebarProvider = void 0;
 const vscode = __importStar(require("vscode"));
 const node_fetch_1 = __importDefault(require("node-fetch"));
 const config_1 = require("./config");
-const fs = __importStar(require("fs"));
+const fs = __importStar(require("node:fs"));
+const parser_1 = require("./parser");
 class SidebarProvider {
     constructor(_extensionUri, _statusBarItem) {
         this._extensionUri = _extensionUri;
@@ -101,48 +102,46 @@ class SidebarProvider {
         });
     }
     async _analyzeWorkspace(force = false) {
+        // 1. Validate workspace
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (!workspaceFolders || workspaceFolders.length === 0) {
-            this._statusBarItem.text = '$(error) RepoSense: Error';
-            if (this._view) {
-                this._view.webview.postMessage({
-                    type: 'error',
-                    message: 'No workspace folder open'
-                });
-            }
+            this._postError('No workspace folder open');
             return;
         }
         const workspacePath = workspaceFolders[0].uri.fsPath;
-        // Clear cache when switching folders
-        if (workspacePath !== this._cachedWorkspacePath) {
-            this._cachedResult = null;
-        }
+        // 2. Parse workspace locally
+        this._statusBarItem.text = '$(sync~spin) RepoSense: Parsing...';
+        this._postMessage({ type: 'loading', step: 'Parsing workspace locally...' });
+        let parsedCodebase;
         try {
-            // Send initial status
-            if (this._view) {
-                this._view.webview.postMessage({
-                    type: 'loading',
-                    step: 'Starting analysis...'
+            parsedCodebase = await (0, parser_1.parseWorkspace)(workspacePath, (done, total, file) => {
+                const percentage = total > 0
+                    ? Math.round((done / total) * 100)
+                    : 0;
+                this._postMessage({
+                    type: 'progress',
+                    data: {
+                        percentage,
+                        step: file ? `Parsing: ${file}` : 'Parsing complete',
+                    },
                 });
-            }
-            // Update status bar to analyzing
+            });
+        }
+        catch (error) {
+            this._postError(`Failed to parse workspace: ${error instanceof Error ? error.message : String(error)}`);
+            this._statusBarItem.text = '$(error) RepoSense: Error';
+            return;
+        }
+        // 3. Send parsed codebase to backend
+        try {
             this._statusBarItem.text = '$(sync~spin) RepoSense: Analyzing...';
-            // Send initial status to webview if available
-            if (this._view) {
-                this._view.webview.postMessage({
-                    type: 'status',
-                    message: 'Starting analysis...'
-                });
-            }
+            this._postMessage({ type: 'status', message: 'Sending to analysis...' });
             const config = (0, config_1.getConfig)();
-            // Send POST request to start analysis
-            const response = await (0, node_fetch_1.default)(`${config.backendUrl}/analyze`, {
+            const response = await (0, node_fetch_1.default)(`${config.backendUrl}/analyze-parsed`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ local_path: workspacePath }),
-                timeout: config.requestTimeoutMs
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ parsed_codebase: parsedCodebase }),
+                timeout: config.requestTimeoutMs,
             });
             if (!response.ok) {
                 const errorText = await response.text();
@@ -150,19 +149,13 @@ class SidebarProvider {
             }
             const data = await response.json();
             const jobId = data.job_id;
-            // Send initial progress update
+            // Send initial progress update then start polling
             this._updateProgress(data.progress);
-            // Start polling for results
             this._startPolling(jobId);
         }
         catch (error) {
+            this._postError(`Failed to start analysis: ${error instanceof Error ? error.message : String(error)}`);
             this._statusBarItem.text = '$(error) RepoSense: Error';
-            if (this._view) {
-                this._view.webview.postMessage({
-                    type: 'error',
-                    message: `Failed to start analysis: ${error instanceof Error ? error.message : String(error)}`
-                });
-            }
         }
     }
     _startPolling(jobId) {
@@ -225,14 +218,7 @@ class SidebarProvider {
             clearInterval(this._pollingInterval);
             this._pollingInterval = undefined;
         }
-        // Update status bar to error
-        this._statusBarItem.text = '$(error) RepoSense: Error';
-        if (this._view) {
-            this._view.webview.postMessage({
-                type: 'error',
-                message: `Failed to check results after ${this._maxRetries} retries: ${error instanceof Error ? error.message : String(error)}`
-            });
-        }
+        this._postError(`Failed to check results after ${this._maxRetries} retries: ${error instanceof Error ? error.message : String(error)}`);
     }
     _handleResult(result) {
         // Stop polling
@@ -250,15 +236,13 @@ class SidebarProvider {
                 vscode.commands.executeCommand('reposense-sidebar.focus');
             }
         });
-        if (this._view) {
-            this._view.webview.postMessage({
-                type: 'complete',
-                healthScore: result.score.score,
-                grade: result.score.grade,
-                summary: result.score.summary,
-                result: result
-            });
-        }
+        this._postMessage({
+            type: 'complete',
+            healthScore: result.score.score,
+            grade: result.score.grade,
+            summary: result.score.summary,
+            result: result
+        });
     }
     _handleAnalysisError(error) {
         // Stop polling
@@ -266,13 +250,7 @@ class SidebarProvider {
             clearInterval(this._pollingInterval);
             this._pollingInterval = undefined;
         }
-        this._statusBarItem.text = '$(error) RepoSense: Error';
-        if (this._view) {
-            this._view.webview.postMessage({
-                type: 'error',
-                message: `${error.stage}: ${error.message} (${error.code})`
-            });
-        }
+        this._postError(`${error.stage}: ${error.message} (${error.code})`);
     }
     _updateProgress(steps) {
         if (!this._view) {
@@ -304,6 +282,17 @@ class SidebarProvider {
         html = html.replace('href="styles.css"', `href="${cssUri}"`);
         html = html.replace('src="main.js"', `src="${jsUri}"`);
         return html;
+    }
+    _postError(message) {
+        this._statusBarItem.text = '$(error) RepoSense: Error';
+        if (this._view) {
+            this._view.webview.postMessage({ type: 'error', message });
+        }
+    }
+    _postMessage(msg) {
+        if (this._view) {
+            this._view.webview.postMessage(msg);
+        }
     }
     _getNonce() {
         let text = '';
