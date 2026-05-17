@@ -292,6 +292,20 @@ async def config_status():
     }
 
 
+@app.get("/config/validate")
+async def config_validate():
+    """
+    Test whether the stored credentials actually work by doing a real
+    IAM token exchange. Slower than /config/status but catches bad keys.
+    """
+    if not config_module.settings.is_configured():
+        missing = config_module.settings.missing_fields()
+        return {"valid": False, "error": f"Missing fields: {', '.join(missing)}"}
+
+    valid, error = await config_module.settings.validate_credentials()
+    return {"valid": valid, "error": error}
+
+
 @app.post("/config/setup")
 async def config_setup(body: ConfigSetupRequest):
     """

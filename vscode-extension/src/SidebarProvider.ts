@@ -178,6 +178,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                         webviewView.webview.postMessage({ type: 'setup' });
                         return;
                     }
+                    if (status === 'unavailable') {
+                        webviewView.webview.postMessage({
+                            type: 'error',
+                            message: 'Cannot reach the RepoSense backend. Make sure it is running.'
+                        });
+                        return;
+                    }
                     const currentPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
                     if (currentPath && this._cachedWorkspacePath === currentPath && this._cachedResult) {
                         this._handleResult(this._cachedResult);
@@ -189,9 +196,22 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     break;
                 }
                 case 'analyzeWorkspace':
-                case 'retry':
+                case 'retry': {
+                    const status = await this._checkBackendConfig();
+                    if (status === 'not_configured') {
+                        webviewView.webview.postMessage({ type: 'setup' });
+                        return;
+                    }
+                    if (status === 'unavailable') {
+                        webviewView.webview.postMessage({
+                            type: 'error',
+                            message: 'Cannot reach the RepoSense backend. Make sure it is running.'
+                        });
+                        return;
+                    }
                     await this._analyzeWorkspace(true);
                     break;
+                }
                 case 'openFullView':
                     this._openEditorPanel();
                     break;
@@ -199,6 +219,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     const msgData = data as { type: string; data: Record<string, string> };
                     try {
                         await this._saveConfig(msgData.data);
+                        // After saving, do a real IAM validation to catch bad keys
+                        // before we attempt an analysis.
+                        const valid = await this._validateCredentials();
+                        if (!valid) {
+                            webviewView.webview.postMessage({
+                                type: 'error',
+                                message: 'Credentials saved but API key validation failed. Please check your Orchestrate API key.'
+                            });
+                            return;
+                        }
                         const status = await this._checkBackendConfig();
                         if (status === 'configured') {
                             const currentPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -261,6 +291,20 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             return data.configured ? 'configured' : 'not_configured';
         } catch {
             return 'unavailable';
+        }
+    }
+
+    private async _validateCredentials(): Promise<boolean> {
+        try {
+            const config = getConfig();
+            const response = await fetch(`${config.backendUrl}/config/validate`, {
+                timeout: config.requestTimeoutMs
+            });
+            if (!response.ok) { return false; }
+            const data = await response.json() as { valid: boolean };
+            return data.valid === true;
+        } catch {
+            return false;
         }
     }
 
@@ -484,6 +528,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         }
 
         this._statusBarItem.text = '$(error) RepoSense: Error';
+
+        // IAM token failures mean the stored credentials are invalid — send
+        // the user back to the setup screen instead of showing a raw error.
+        const isAuthFailure =
+            error.message.includes('IAM token') ||
+            error.message.includes('apikey') ||
+            error.message.includes('Authentication failed') ||
+            error.message.includes('BXNIM');
+
+        if (isAuthFailure && this._view) {
+            this._view.webview.postMessage({ type: 'setup' });
+            return;
+        }
 
         if (this._view) {
             this._view.webview.postMessage({
