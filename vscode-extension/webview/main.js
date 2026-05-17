@@ -500,6 +500,7 @@ function renderDependencyTree(nodeId, depth) {
     if (graphSimulation) graphSimulation.stop();
     const container = document.getElementById('graphContainer');
     container.innerHTML = '';
+    document.getElementById('nodeTooltip').classList.add('hidden');
     
     const width = container.clientWidth || 1000;
     const height = container.clientHeight || 600;
@@ -721,6 +722,7 @@ function renderNetworkGraph(architecture) {
     }
     const container = document.getElementById('graphContainer');
     container.innerHTML = '';
+    document.getElementById('nodeTooltip').classList.add('hidden');
     
     const width = container.clientWidth || 1000;
     const height = container.clientHeight || 600;
