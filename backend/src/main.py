@@ -49,6 +49,7 @@ from .jobs import (
     delete_job as delete_job_from_store
 )
 from .orchestrate import orchestrate_analysis
+from fastapi.responses import JSONResponse
 
 
 def validate_local_path(local_path: str) -> str:
@@ -355,6 +356,37 @@ async def config_status():
         "configured": config_module.settings.is_configured(),
         "missing_fields": missing
     }
+
+
+@app.get("/config/test-orchestrate")
+async def config_test_orchestrate():
+    """Perform an IAM token exchange using the configured ORCHESTRATE_API_KEY.
+
+    Returns the first bytes of the token on success, or a 400 with the error message.
+    """
+    try:
+        from .orchestrate_client import get_orchestrate_client
+        client = get_orchestrate_client()
+        token = await client._get_iam_token()
+        return {"ok": True, "message": "IAM token obtained", "token_excerpt": (token[:16] + "...") if token else None}
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"ok": False, "error": str(e)})
+
+
+@app.get("/config/test-watsonx")
+async def config_test_watsonx():
+    """Perform a minimal WatsonX call to validate WatsonX credentials and project.
+
+    Returns an excerpt of the response on success, or a 400 with the error message.
+    """
+    try:
+        from .watsonx import _call_watsonx
+        # Use a short prompt that should always succeed if credentials and project are valid
+        resp = await _call_watsonx("Say hello in one short sentence.")
+        excerpt = resp[:200] if isinstance(resp, str) else str(resp)
+        return {"ok": True, "message": "WatsonX responded", "response_excerpt": excerpt}
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"ok": False, "error": str(e)})
 
 
 @app.post("/config/setup")
