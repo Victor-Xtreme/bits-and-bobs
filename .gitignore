@@ -127,6 +127,9 @@ celerybeat.pid
 
 # Rope project settings
 .ropeproject
+# node modules
+vscode-extension/node_modules/
+vscode-extension/out/
 
 # mkdocs documentation
 /site
