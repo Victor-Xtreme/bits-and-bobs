@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import fetch from 'node-fetch';
 import { getConfig } from './config';
 import * as fs from 'fs';
+import * as path from 'path';
 
 // Backend API Models (matching models.py)
 type PayloadType = 'request' | 'result' | 'error';
@@ -145,6 +146,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     // Cache — keyed per workspace folder path
     private _cachedResult: AnalysisResult | null = null;
     private _cachedWorkspacePath: string | null = null;
+    private _activeAnalysisPath: string | null = null;
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
@@ -280,26 +282,29 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
 
     private async _analyzeWorkspace(force: boolean = false) {
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        if (!workspaceFolders || workspaceFolders.length === 0) {
+        const analysisPath = await this._resolveAnalysisPath();
+        if (!analysisPath) {
             this._statusBarItem.text = '$(error) RepoSense: Error';
             if (this._view) {
                 this._view.webview.postMessage({
                     type: 'error',
-                    message: 'No workspace folder open'
+                    message: 'No valid folder selected for analysis'
                 });
             }
             return;
         }
 
-        const workspacePath = workspaceFolders[0].uri.fsPath;
-
         // Clear cache when switching folders
-        if (workspacePath !== this._cachedWorkspacePath) {
+        if (analysisPath !== this._cachedWorkspacePath) {
             this._cachedResult = null;
         }
 
+        this._activeAnalysisPath = analysisPath;
+
         try {
+            const config = getConfig();
+            this._ensureBackendCanAccessPath(config.backendUrl, analysisPath);
+
             // Send initial status
             if (this._view) {
                 this._view.webview.postMessage({
@@ -318,15 +323,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 });
             }
 
-            const config = getConfig();
-            
             // Send POST request to start analysis
             const response = await fetch(`${config.backendUrl}/analyze`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ local_path: workspacePath }),
+                body: JSON.stringify({ local_path: analysisPath }),
                 timeout: config.requestTimeoutMs
             });
 
@@ -335,6 +338,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 // Provide more actionable error for 404s (likely wrong backend URL or missing endpoint)
                 if (response.status === 404) {
                     throw new Error(`HTTP 404: Endpoint not found. Check that the backend URL is correct and the server exposes /analyze.`);
+                }
+                if (response.status === 400 && errorText.includes('Path does not exist')) {
+                    throw new Error(`HTTP 400: Selected analysis path does not exist on this machine (${analysisPath}). Please choose an existing folder and retry.`);
                 }
                 throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
             }
@@ -356,6 +362,68 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     message: `Failed to start analysis: ${error instanceof Error ? error.message : String(error)}`
                 });
             }
+        }
+    }
+
+    private async _resolveAnalysisPath(): Promise<string | null> {
+        const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (workspacePath && this._isExistingDirectory(workspacePath)) {
+            return workspacePath;
+        }
+
+        const activeEditorPath = vscode.window.activeTextEditor?.document.uri.fsPath;
+        if (activeEditorPath) {
+            const fallbackFolder = this._isExistingDirectory(activeEditorPath)
+                ? activeEditorPath
+                : path.dirname(activeEditorPath);
+            if (this._isExistingDirectory(fallbackFolder)) {
+                return fallbackFolder;
+            }
+        }
+
+        const picked = await vscode.window.showOpenDialog({
+            canSelectFiles: false,
+            canSelectFolders: true,
+            canSelectMany: false,
+            openLabel: 'Select Folder to Analyze'
+        });
+
+        return picked?.[0]?.fsPath ?? null;
+    }
+
+    private _isExistingDirectory(targetPath: string): boolean {
+        try {
+            return fs.existsSync(targetPath) && fs.statSync(targetPath).isDirectory();
+        } catch {
+            return false;
+        }
+    }
+
+    private _ensureBackendCanAccessPath(backendUrl: string, analysisPath: string): void {
+        const host = this._getBackendHost(backendUrl);
+        if (!host) {
+            return;
+        }
+
+        const isLocalBackend = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+        if (isLocalBackend) {
+            return;
+        }
+
+        const isLikelyLocalFilesystemPath = path.isAbsolute(analysisPath);
+        if (isLikelyLocalFilesystemPath) {
+            throw new Error(
+                `Backend URL ${backendUrl} is remote and cannot access local path ${analysisPath}. ` +
+                'Set reposense.backendUrl to http://localhost:8000 (or run the backend where this path exists).'
+            );
+        }
+    }
+
+    private _getBackendHost(backendUrl: string): string | null {
+        try {
+            return new URL(backendUrl).hostname.toLowerCase();
+        } catch {
+            return null;
         }
     }
 
@@ -456,7 +524,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
         // Store in cache
         this._cachedResult = result;
-        this._cachedWorkspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
+        this._cachedWorkspacePath = this._activeAnalysisPath;
 
         this._view!.webview.postMessage({ type: 'results', data: result });
         this._statusBarItem.text = `$(graph) RepoSense: Score ${result.score.score}/100`;

@@ -140,6 +140,19 @@ class Settings(BaseSettings):
 settings = Settings()  # type: ignore[call-arg]
 
 
+def reload_settings() -> Settings:
+    """
+    Reload configuration from environment and update the shared settings object in place.
+
+    This preserves object identity so modules that imported `settings` continue
+    to see fresh values after `/config/setup` updates.
+    """
+    new_settings = Settings()  # type: ignore[call-arg]
+    for key, value in new_settings.model_dump().items():
+        setattr(settings, key, value)
+    return settings
+
+
 # Constants
 PROGRESS_STEPS = [
     "Parsing codebase",

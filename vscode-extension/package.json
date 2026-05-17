@@ -2,7 +2,11 @@
   "name": "reposense",
   "displayName": "RepoSense",
   "description": "Analyze workspace repositories and get health scores",
-  "version": "0.0.1",
+  "version": "1.0.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/bits-and-bobs-deployment.git"
+  },
   "engines": {
     "vscode": "^1.74.0"
   },

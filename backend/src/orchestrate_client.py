@@ -41,6 +41,10 @@ class OrchestrateClient:
 
     async def _get_iam_token(self) -> str:
         """Exchange IBM Cloud API key for an IAM Bearer token, refreshing when near expiry."""
+        if not self.api_key or not self.api_key.strip():
+            raise ValueError(
+                "ORCHESTRATE_API_KEY is missing or empty. Open RepoSense setup and save your Orchestrate API key."
+            )
         if self._iam_token and time.time() < self._iam_token_expiry - 60:
             return self._iam_token
         async with httpx.AsyncClient(timeout=30) as client:

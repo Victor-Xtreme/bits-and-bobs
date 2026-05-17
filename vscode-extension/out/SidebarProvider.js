@@ -31,6 +31,7 @@ const vscode = __importStar(require("vscode"));
 const node_fetch_1 = __importDefault(require("node-fetch"));
 const config_1 = require("./config");
 const fs = __importStar(require("fs"));
+const path = __importStar(require("path"));
 class SidebarProvider {
     constructor(_extensionUri, _statusBarItem) {
         this._extensionUri = _extensionUri;
@@ -40,6 +41,7 @@ class SidebarProvider {
         // Cache — keyed per workspace folder path
         this._cachedResult = null;
         this._cachedWorkspacePath = null;
+        this._activeAnalysisPath = null;
     }
     triggerAnalysis(force = false) {
         this._analyzeWorkspace(force);
@@ -59,7 +61,8 @@ class SidebarProvider {
             switch (data.type) {
                 case 'ready': {
                     const status = await this._checkBackendConfig();
-                    if (status === 'not_configured') {
+                    // If the backend is not configured or unavailable, show setup/dashboard
+                    if (status !== 'configured') {
                         webviewView.webview.postMessage({ type: 'setup' });
                         return;
                     }
@@ -161,23 +164,25 @@ class SidebarProvider {
         }
     }
     async _analyzeWorkspace(force = false) {
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        if (!workspaceFolders || workspaceFolders.length === 0) {
+        const analysisPath = await this._resolveAnalysisPath();
+        if (!analysisPath) {
             this._statusBarItem.text = '$(error) RepoSense: Error';
             if (this._view) {
                 this._view.webview.postMessage({
                     type: 'error',
-                    message: 'No workspace folder open'
+                    message: 'No valid folder selected for analysis'
                 });
             }
             return;
         }
-        const workspacePath = workspaceFolders[0].uri.fsPath;
         // Clear cache when switching folders
-        if (workspacePath !== this._cachedWorkspacePath) {
+        if (analysisPath !== this._cachedWorkspacePath) {
             this._cachedResult = null;
         }
+        this._activeAnalysisPath = analysisPath;
         try {
+            const config = (0, config_1.getConfig)();
+            this._ensureBackendCanAccessPath(config.backendUrl, analysisPath);
             // Send initial status
             if (this._view) {
                 this._view.webview.postMessage({
@@ -194,18 +199,24 @@ class SidebarProvider {
                     message: 'Starting analysis...'
                 });
             }
-            const config = (0, config_1.getConfig)();
             // Send POST request to start analysis
             const response = await (0, node_fetch_1.default)(`${config.backendUrl}/analyze`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ local_path: workspacePath }),
+                body: JSON.stringify({ local_path: analysisPath }),
                 timeout: config.requestTimeoutMs
             });
             if (!response.ok) {
                 const errorText = await response.text();
+                // Provide more actionable error for 404s (likely wrong backend URL or missing endpoint)
+                if (response.status === 404) {
+                    throw new Error(`HTTP 404: Endpoint not found. Check that the backend URL is correct and the server exposes /analyze.`);
+                }
+                if (response.status === 400 && errorText.includes('Path does not exist')) {
+                    throw new Error(`HTTP 400: Selected analysis path does not exist on this machine (${analysisPath}). Please choose an existing folder and retry.`);
+                }
                 throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
             }
             const data = await response.json();
@@ -223,6 +234,59 @@ class SidebarProvider {
                     message: `Failed to start analysis: ${error instanceof Error ? error.message : String(error)}`
                 });
             }
+        }
+    }
+    async _resolveAnalysisPath() {
+        const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (workspacePath && this._isExistingDirectory(workspacePath)) {
+            return workspacePath;
+        }
+        const activeEditorPath = vscode.window.activeTextEditor?.document.uri.fsPath;
+        if (activeEditorPath) {
+            const fallbackFolder = this._isExistingDirectory(activeEditorPath)
+                ? activeEditorPath
+                : path.dirname(activeEditorPath);
+            if (this._isExistingDirectory(fallbackFolder)) {
+                return fallbackFolder;
+            }
+        }
+        const picked = await vscode.window.showOpenDialog({
+            canSelectFiles: false,
+            canSelectFolders: true,
+            canSelectMany: false,
+            openLabel: 'Select Folder to Analyze'
+        });
+        return picked?.[0]?.fsPath ?? null;
+    }
+    _isExistingDirectory(targetPath) {
+        try {
+            return fs.existsSync(targetPath) && fs.statSync(targetPath).isDirectory();
+        }
+        catch {
+            return false;
+        }
+    }
+    _ensureBackendCanAccessPath(backendUrl, analysisPath) {
+        const host = this._getBackendHost(backendUrl);
+        if (!host) {
+            return;
+        }
+        const isLocalBackend = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+        if (isLocalBackend) {
+            return;
+        }
+        const isLikelyLocalFilesystemPath = path.isAbsolute(analysisPath);
+        if (isLikelyLocalFilesystemPath) {
+            throw new Error(`Backend URL ${backendUrl} is remote and cannot access local path ${analysisPath}. ` +
+                'Set reposense.backendUrl to http://localhost:8000 (or run the backend where this path exists).');
+        }
+    }
+    _getBackendHost(backendUrl) {
+        try {
+            return new URL(backendUrl).hostname.toLowerCase();
+        }
+        catch {
+            return null;
         }
     }
     _startPolling(jobId) {
@@ -302,7 +366,7 @@ class SidebarProvider {
         }
         // Store in cache
         this._cachedResult = result;
-        this._cachedWorkspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
+        this._cachedWorkspacePath = this._activeAnalysisPath;
         this._view.webview.postMessage({ type: 'results', data: result });
         this._statusBarItem.text = `$(graph) RepoSense: Score ${result.score.score}/100`;
         vscode.window.showInformationMessage(`RepoSense: Analysis complete — Score ${result.score.score}/100`, 'View Details').then((selection) => {

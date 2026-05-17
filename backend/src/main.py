@@ -336,7 +336,7 @@ async def config_setup(body: ConfigSetupRequest):
         encoding="utf-8"
     )
 
-    config_module.settings = config_module.Settings()
+    config_module.reload_settings()
 
     missing = config_module.settings.missing_fields()
     return {
