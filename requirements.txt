@@ -1,7 +1,7 @@
 # Core Framework
-fastapi==0.104.1
-uvicorn[standard]==0.47.0
-pydantic==2.13.4
+fastapi
+uvicorn[standard]
+pydantic
 pydantic-settings
 # IBM WatsonX AI
 ibm-watsonx-ai
