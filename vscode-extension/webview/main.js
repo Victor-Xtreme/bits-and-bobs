@@ -239,43 +239,61 @@ function renderReviewPanel(review) {
 }
 function renderDocsPanel(documentation) {
     if (!documentation) return;
-    
-    const docsContent = document.getElementById('docsContent');
+
+    const docsContent  = document.getElementById('docsContent');
     const testsContent = document.getElementById('testsContent');
-    
-    // Render documentation
-    if (documentation.functions && documentation.functions.length > 0) {
+
+    // Render documentation — backend field is `docs`, each entry has `function_name`
+    const docs = documentation.docs || documentation.functions || [];
+    if (docs.length > 0) {
         docsContent.innerHTML = '';
-        documentation.functions.forEach(func => {
+        docs.forEach(func => {
             const item = document.createElement('div');
             item.className = 'doc-item';
-            
+
+            const paramsHtml = Array.isArray(func.params) && func.params.length > 0
+                ? func.params.map(p => `<span style="color:var(--cyan)">${p.name}</span><span style="color:var(--fg2)">: ${p.type}</span> — ${p.description}`).join('<br>')
+                : null;
+
             item.innerHTML = `
-                <h4>${func.name}</h4>
-                <p>${func.description}</p>
-                ${func.params ? `<p><strong>Parameters:</strong> ${func.params}</p>` : ''}
-                ${func.returns ? `<p><strong>Returns:</strong> ${func.returns}</p>` : ''}
+                <h4>${func.function_name || func.name || ''}</h4>
+                <p>${func.description || ''}</p>
+                ${paramsHtml ? `<p style="margin-top:6px"><strong>Params</strong><br>${paramsHtml}</p>` : ''}
+                ${func.returns ? `<p style="margin-top:4px"><strong>Returns:</strong> ${func.returns}</p>` : ''}
                 ${func.example ? `<pre><code>${escapeHtml(func.example)}</code></pre>` : ''}
             `;
-            
+
             docsContent.appendChild(item);
         });
+    } else {
+        docsContent.innerHTML = '<div class="empty">No documentation generated</div>';
     }
-    
-    // Render test stubs
-    if (documentation.tests && documentation.tests.length > 0) {
+
+    // Render test stubs — each entry has `function_name` and `test_cases[]`
+    const tests = documentation.tests || [];
+    if (tests.length > 0) {
         testsContent.innerHTML = '';
-        documentation.tests.forEach(test => {
+        tests.forEach(entry => {
             const item = document.createElement('div');
             item.className = 'doc-item';
-            
+
+            const casesHtml = Array.isArray(entry.test_cases)
+                ? entry.test_cases.map(tc => `<div style="margin-bottom:8px">
+                    <p style="color:var(--fg2)">${tc.description || ''}</p>
+                    ${tc.input    ? `<p><strong>Input:</strong> <code>${escapeHtml(tc.input)}</code></p>` : ''}
+                    ${tc.expected ? `<p><strong>Expected:</strong> <code>${escapeHtml(tc.expected)}</code></p>` : ''}
+                  </div>`).join('')
+                : '';
+
             item.innerHTML = `
-                <h4>${test.name}</h4>
-                <pre><code>${escapeHtml(test.code)}</code><button class="copy-button" onclick="copyToClipboard(this)">Copy</button></pre>
+                <h4>${entry.function_name || entry.name || ''}</h4>
+                ${casesHtml}
             `;
-            
+
             testsContent.appendChild(item);
         });
+    } else {
+        testsContent.innerHTML = '<div class="empty">No test stubs generated</div>';
     }
 }
 function renderSecurityPanel(security) {
@@ -891,10 +909,10 @@ function initializeEventListeners() {
     }
     
     // Filter buttons
-    document.querySelectorAll('.filter-button').forEach(button => {
+    document.querySelectorAll('.btn-filter').forEach(button => {
         button.addEventListener('click', () => {
             currentFilter = button.dataset.filter;
-            document.querySelectorAll('.filter-button').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
             button.classList.add('active');
             if (analysisData) {
                 renderReviewPanel(analysisData.review);
@@ -903,10 +921,10 @@ function initializeEventListeners() {
     });
     
     // Docs tabs
-    document.querySelectorAll('.docs-tab').forEach(tab => {
+    document.querySelectorAll('.tab2').forEach(tab => {
         tab.addEventListener('click', () => {
             currentDocsTab = tab.dataset.tab;
-            document.querySelectorAll('.docs-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab2').forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
             
             document.getElementById('docsContent').classList.toggle('hidden', currentDocsTab !== 'docs');
