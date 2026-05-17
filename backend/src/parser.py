@@ -402,9 +402,8 @@ async def parse_javascript_file(rel_path: str, content: str, language: str) -> P
     
     # Extract functions (simplified)
     func_patterns = [
-        r'function\s+(\w+)\s*\(',
-        r'const\s+(\w+)\s*=\s*(?:async\s+)?\(',
         r'(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(',
+        r'const\s+(\w+)\s*=\s*(?:async\s+)?\(',
     ]
     
     for pattern in func_patterns:
