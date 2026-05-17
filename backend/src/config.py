@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     watsonx_api_key: str = ""
     watsonx_project_id: str = ""
     watsonx_url: str = "https://us-south.ml.cloud.ibm.com"
-    watsonx_model_id: str = "openai/gpt-oss-120b"
+    watsonx_model_id: str = "meta-llama/llama-3-3-70b-instruct"
 
     # WatsonX Orchestrate Configuration
     orchestrate_api_key: str = ""
@@ -54,10 +54,40 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = "INFO"
     
+    VALID_MODEL_IDS: list[str] = [
+        "meta-llama/llama-3-3-70b-instruct",
+        "meta-llama/llama-4-maverick-17b-128e-instruct-fp8",
+        "meta-llama/llama-3-1-70b-gptq",
+        "meta-llama/llama-3-1-8b",
+        "meta-llama/llama-3-2-11b-vision-instruct",
+        "openai/gpt-oss-120b",
+        "mistral-large-2512",
+        "ibm/granite-8b-code-instruct",
+        "ibm/granite-4-h-small",
+    ]
+    FALLBACK_MODEL_ID: str = "meta-llama/llama-3-3-70b-instruct"
+
+    @field_validator('watsonx_model_id')
+    @classmethod
+    def validate_model_id(cls, v: str) -> str:
+        valid = [
+            "meta-llama/llama-3-3-70b-instruct",
+            "meta-llama/llama-4-maverick-17b-128e-instruct-fp8",
+            "meta-llama/llama-3-1-70b-gptq",
+            "meta-llama/llama-3-1-8b",
+            "meta-llama/llama-3-2-11b-vision-instruct",
+            "openai/gpt-oss-120b",
+            "mistral-large-2512",
+            "ibm/granite-8b-code-instruct",
+            "ibm/granite-4-h-small",
+        ]
+        if v not in valid:
+            return "meta-llama/llama-3-3-70b-instruct"
+        return v
+
     @field_validator('log_level')
     @classmethod
     def validate_log_level(cls, v: str) -> str:
-        """Validate that log level is valid"""
         valid_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
         v_upper = v.upper()
         if v_upper not in valid_levels:

@@ -90,7 +90,17 @@
                 </div>
                 <div class="field-group">
                     <label>Model ID</label>
-                    <input type="text" id="wModelId" value="ibm/granite-8b-code-instruct">
+                    <select id="wModelId">
+                        <option value="meta-llama/llama-3-3-70b-instruct" selected>meta-llama/llama-3-3-70b-instruct (Recommended)</option>
+                        <option value="meta-llama/llama-4-maverick-17b-128e-instruct-fp8">meta-llama/llama-4-maverick-17b-128e-instruct-fp8</option>
+                        <option value="meta-llama/llama-3-1-70b-gptq">meta-llama/llama-3-1-70b-gptq</option>
+                        <option value="meta-llama/llama-3-1-8b">meta-llama/llama-3-1-8b</option>
+                        <option value="meta-llama/llama-3-2-11b-vision-instruct">meta-llama/llama-3-2-11b-vision-instruct</option>
+                        <option value="openai/gpt-oss-120b">openai/gpt-oss-120b</option>
+                        <option value="mistral-large-2512">mistral-large-2512</option>
+                        <option value="ibm/granite-8b-code-instruct">ibm/granite-8b-code-instruct</option>
+                        <option value="ibm/granite-4-h-small">ibm/granite-4-h-small</option>
+                    </select>
                 </div>
                 <button class="btn-primary btn-full" id="wizardNext1">Next →</button>
             </div>
