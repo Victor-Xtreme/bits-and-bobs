@@ -1,0 +1,8 @@
+# This file should be moved to repo root or use web service dashboard
+# services:
+#   - type: web
+#     name: reposense-backend
+#     root: backend
+#     env: python
+#     buildCommand: pip install -r requirements.txt
+#     startCommand: gunicorn -k uvicorn.workers.UvicornWorker src.main:app --bind 0.0.0.0:$PORT --workers 4

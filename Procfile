@@ -1,0 +1,1 @@
+web: pip install -r backend/requirements.txt && cd backend && gunicorn -k uvicorn.workers.UvicornWorker src.main:app --bind 0.0.0.0:$PORT --workers 4
