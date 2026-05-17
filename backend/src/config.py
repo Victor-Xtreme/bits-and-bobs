@@ -15,39 +15,11 @@ class Settings(BaseSettings):
     Uses pydantic-settings for validation and type conversion.
     """
     
-    # WatsonX API Configuration
-    watsonx_api_key: str
-    watsonx_project_id: str
-    
-    @field_validator('watsonx_api_key')
-    @classmethod
-    def validate_api_key(cls, v: str) -> str:
-        """Validate that API key is not empty and meets minimum requirements"""
-        if not v or len(v.strip()) < 10:
-            raise ValueError('watsonx_api_key must be at least 10 characters long')
-        # Allow mock/test values for testing purposes
-        allowed_test_values = ['test-key', 'mock-api-key', 'test-api-key']
-        if v.strip() in allowed_test_values:
-            return v.strip()
-        if v.strip() in ['your-api-key-here', 'placeholder', 'test', 'dummy']:
-            raise ValueError('watsonx_api_key appears to be a placeholder value')
-        return v.strip()
-    
-    @field_validator('watsonx_project_id')
-    @classmethod
-    def validate_project_id(cls, v: str) -> str:
-        """Validate that project ID is not empty"""
-        if not v or len(v.strip()) < 5:
-            raise ValueError('watsonx_project_id must be at least 5 characters long')
-        # Allow mock/test values for testing purposes
-        allowed_test_values = ['test-project-id', 'mock-project-id']
-        if v.strip() in allowed_test_values:
-            return v.strip()
-        if v.strip() in ['your-project-id', 'placeholder', 'test']:
-            raise ValueError('watsonx_project_id appears to be a placeholder value')
-        return v.strip()
+    # WatsonX API Configuration (empty default so backend starts without .env)
+    watsonx_api_key: str = ""
+    watsonx_project_id: str = ""
     watsonx_url: str = "https://us-south.ml.cloud.ibm.com"
-    watsonx_model_id: str = "ibm/granite-8b-code-instruct"
+    watsonx_model_id: str = "openai/gpt-oss-120b"
 
     # WatsonX Orchestrate Configuration
     orchestrate_api_key: str = ""
@@ -110,6 +82,25 @@ class Settings(BaseSettings):
     def get_max_file_size_bytes(self) -> int:
         """Get max file size in bytes"""
         return self.max_file_size_mb * 1024 * 1024
+
+    def missing_fields(self) -> list[str]:
+        """Return names of required fields that are not yet set."""
+        required = {
+            "watsonx_api_key":                  self.watsonx_api_key,
+            "watsonx_project_id":               self.watsonx_project_id,
+            "orchestrate_api_key":              self.orchestrate_api_key,
+            "orchestrate_url":                  self.orchestrate_url,
+            "orchestrate_instance_id":          self.orchestrate_instance_id,
+            "orchestrate_environment_id":       self.orchestrate_environment_id,
+            "orchestrate_agent_architect_id":   self.orchestrate_agent_architect_id,
+            "orchestrate_agent_reviewer_id":    self.orchestrate_agent_reviewer_id,
+            "orchestrate_agent_documenter_id":  self.orchestrate_agent_documenter_id,
+            "orchestrate_agent_hardener_id":    self.orchestrate_agent_hardener_id,
+        }
+        return [k for k, v in required.items() if not v or not v.strip()]
+
+    def is_configured(self) -> bool:
+        return len(self.missing_fields()) == 0
 
 
 # Global settings instance

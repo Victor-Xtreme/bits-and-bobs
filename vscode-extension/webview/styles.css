@@ -638,6 +638,95 @@ html, body {
 
 .empty.hidden { display: none; }
 
+/* ── Setup Wizard ───────────────────────────────────────────────────────── */
+.wizard-panel { padding: 4px 0 16px; }
+.wizard-panel.hidden { display: none; }
+
+.wizard-header {
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--line);
+}
+
+.wizard-title { font-size: 14px; font-weight: 700; color: var(--fg); margin-bottom: 3px; }
+.wizard-sub   { font-size: 11px; color: var(--fg2); margin-bottom: 12px; }
+
+.wizard-steps-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0;
+}
+
+.step-dot {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: var(--raise);
+    border: 1px solid var(--line-hi);
+    color: var(--fg2);
+    font-size: 10px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: background .2s, border-color .2s, color .2s;
+}
+
+.step-dot.active { background: var(--purple); border-color: var(--purple); color: #fff; }
+.step-dot.done   { background: var(--green);  border-color: var(--green);  color: #fff; }
+
+.step-line {
+    flex: 1;
+    height: 1px;
+    background: var(--line-hi);
+    margin: 0 6px;
+}
+
+.wizard-step-title {
+    font-size: 13px; font-weight: 700;
+    color: var(--fg);
+    margin-bottom: 12px;
+}
+
+.wizard-step.hidden { display: none; }
+
+.field-group { margin-bottom: 10px; }
+
+.field-group label {
+    display: block;
+    font-size: 9px; font-weight: 700;
+    letter-spacing: .08em; text-transform: uppercase;
+    color: var(--fg2);
+    margin-bottom: 4px;
+}
+
+.field-group input {
+    width: 100%;
+    background: var(--raise);
+    border: 1px solid var(--line-hi);
+    border-radius: var(--r2);
+    padding: 7px 9px;
+    color: var(--fg);
+    font-family: var(--font);
+    font-size: 12px;
+    outline: none;
+    transition: border-color .15s, box-shadow .15s;
+}
+
+.field-group input:focus {
+    border-color: var(--purple);
+    box-shadow: 0 0 0 2px rgba(139,92,246,.15);
+}
+
+.field-group input::placeholder { color: var(--fg3); }
+
+.wizard-nav {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.wizard-nav .btn-primary { flex: 1; }
+
+.btn-full { width: 100%; margin-top: 14px; }
+
 /* ── Scrollbar ──────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar       { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }

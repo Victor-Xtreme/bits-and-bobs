@@ -59,6 +59,93 @@
             </div>
         </div>
 
+        <!-- Setup Wizard State -->
+        <div id="setupState" class="wizard-panel hidden">
+            <div class="wizard-header">
+                <p class="wizard-title">Configure RepoSense</p>
+                <p class="wizard-sub">Enter your IBM credentials to get started.</p>
+                <div class="wizard-steps-indicator">
+                    <span class="step-dot active" id="stepDot1">1</span>
+                    <span class="step-line"></span>
+                    <span class="step-dot" id="stepDot2">2</span>
+                    <span class="step-line"></span>
+                    <span class="step-dot" id="stepDot3">3</span>
+                </div>
+            </div>
+
+            <!-- Step 1: WatsonX.ai -->
+            <div class="wizard-step" id="wizardStep1">
+                <p class="wizard-step-title">WatsonX.ai</p>
+                <div class="field-group">
+                    <label>API Key</label>
+                    <input type="password" id="wApiKey" placeholder="Your WatsonX API key">
+                </div>
+                <div class="field-group">
+                    <label>Project ID</label>
+                    <input type="text" id="wProjectId" placeholder="Your project ID">
+                </div>
+                <div class="field-group">
+                    <label>URL</label>
+                    <input type="text" id="wUrl" value="https://us-south.ml.cloud.ibm.com">
+                </div>
+                <div class="field-group">
+                    <label>Model ID</label>
+                    <input type="text" id="wModelId" value="ibm/granite-8b-code-instruct">
+                </div>
+                <button class="btn-primary btn-full" id="wizardNext1">Next →</button>
+            </div>
+
+            <!-- Step 2: Orchestrate -->
+            <div class="wizard-step hidden" id="wizardStep2">
+                <p class="wizard-step-title">WatsonX Orchestrate</p>
+                <div class="field-group">
+                    <label>API Key</label>
+                    <input type="password" id="oApiKey" placeholder="Your Orchestrate API key">
+                </div>
+                <div class="field-group">
+                    <label>URL</label>
+                    <input type="text" id="oUrl" placeholder="https://...">
+                </div>
+                <div class="field-group">
+                    <label>Instance ID</label>
+                    <input type="text" id="oInstanceId" placeholder="Your instance ID">
+                </div>
+                <div class="field-group">
+                    <label>Environment ID</label>
+                    <input type="text" id="oEnvId" placeholder="Your environment ID">
+                </div>
+                <div class="wizard-nav">
+                    <button class="btn-ghost" id="wizardBack2">← Back</button>
+                    <button class="btn-primary" id="wizardNext2">Next →</button>
+                </div>
+            </div>
+
+            <!-- Step 3: Agent IDs -->
+            <div class="wizard-step hidden" id="wizardStep3">
+                <p class="wizard-step-title">Agent IDs</p>
+                <div class="field-group">
+                    <label>Architect Agent ID</label>
+                    <input type="text" id="oArchitectId" placeholder="Agent ID">
+                </div>
+                <div class="field-group">
+                    <label>Reviewer Agent ID</label>
+                    <input type="text" id="oReviewerId" placeholder="Agent ID">
+                </div>
+                <div class="field-group">
+                    <label>Documenter Agent ID</label>
+                    <input type="text" id="oDocumenterId" placeholder="Agent ID">
+                </div>
+                <div class="field-group">
+                    <label>Hardener Agent ID</label>
+                    <input type="text" id="oHardenerId" placeholder="Agent ID">
+                </div>
+                <div class="wizard-nav">
+                    <button class="btn-ghost" id="wizardBack3">← Back</button>
+                    <button class="btn-primary" id="wizardSave">Save &amp; Start →</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Error State -->
         <div id="errorState" class="state-panel hidden">
             <div class="state-inner">
@@ -141,7 +228,7 @@
                     </div>
                     <div class="legend-group">
                         <span class="legend-label">Depth</span>
-                        <span class="legend-text" style="color:var(--fg2)">Hops from selected node. Click any node to re-root.</span>
+                        <span class="legend-text" style="color:var(--fg2)">Drag the slider (1–5) to set how many hops to show. Click any node to re-root the tree.</span>
                     </div>
                 </div>
 
