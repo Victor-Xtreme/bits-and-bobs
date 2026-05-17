@@ -123,6 +123,28 @@
                         <span id="depthValue" class="depth-val">1</span>
                     </div>
                 </div>
+                <!-- Legend -->
+                <div class="arch-legend">
+                    <div class="legend-group">
+                        <span class="legend-label">Nodes</span>
+                        <span class="legend-dot" style="background:#ef4444"></span><span class="legend-text">Entry</span>
+                        <span class="legend-dot" style="background:#3b82f6"></span><span class="legend-text">Service</span>
+                        <span class="legend-dot" style="background:#14b8a6"></span><span class="legend-text">Util</span>
+                        <span class="legend-dot" style="background:#f59e0b"></span><span class="legend-text">Config</span>
+                        <span class="legend-dot" style="background:#6b7280"></span><span class="legend-text">Test</span>
+                    </div>
+                    <div class="legend-group">
+                        <span class="legend-label">Edges</span>
+                        <svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" stroke="#6b7280" stroke-width="1.5"/></svg><span class="legend-text">imports</span>
+                        <svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="4,3"/></svg><span class="legend-text">extends</span>
+                        <svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="2,3"/></svg><span class="legend-text">calls</span>
+                    </div>
+                    <div class="legend-group">
+                        <span class="legend-label">Depth</span>
+                        <span class="legend-text" style="color:var(--fg2)">Hops from selected node. Click any node to re-root.</span>
+                    </div>
+                </div>
+
                 <div id="graphContainer" class="graph-canvas"></div>
                 <div id="nodeTooltip" class="tooltip hidden"></div>
             </div>
