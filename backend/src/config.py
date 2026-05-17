@@ -135,11 +135,17 @@ class Settings(BaseSettings):
         return len(self.missing_fields()) == 0
 
 
+# Initialize settings and log configuration status (for debugging)
+import logging
+logger = logging.getLogger(__name__)
+
 # Global settings instance
 # Note: This will fail at import time if required env vars are missing.
 # For testing or tooling that needs to import without loading config,
 # consider mocking or setting dummy env vars.
 settings = Settings()  # type: ignore[call-arg]
+logger.info(f"Config loaded. Orchestrate API key present: {bool(settings.orchestrate_api_key)}")
+logger.info(f"Missing fields: {settings.missing_fields()}")
 
 
 def reload_settings() -> Settings:
