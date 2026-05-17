@@ -1,153 +1,143 @@
-# RepoSense
+# RepoSense — VS Code Extension
 
-A VS Code extension that analyzes your workspace repository and provides health scores through integration with a backend analysis service.
+The VS Code front end for RepoSense. Triggers analysis on the local FastAPI backend, polls for progress, and renders the full report (health score, architecture graph, code review, docs, security) in a sidebar webview.
 
-## Features
+The webview UI itself lives in [`webview/`](webview/) and is documented separately.
 
-- **Webview Sidebar**: Access RepoSense functionality through a dedicated sidebar panel
-- **Workspace Analysis**: Analyze your current workspace with a single click
-- **Real-time Progress**: See live updates as the analysis progresses
-- **Health Score**: Get a comprehensive health score for your repository
-- **Backend Integration**: Communicates with a local analysis service at `http://localhost:8000`
+---
 
 ## Requirements
 
-- VS Code version 1.74.0 or higher
-- RepoSense backend service running on `http://localhost:8000`
+- VS Code 1.74.0 or higher
+- Node.js 18+ (for building the extension)
+- RepoSense backend reachable at the configured `backendUrl` (default `http://localhost:8000`) — see the [backend setup](../README.md#running-locally)
 
-## Installation
+---
 
-### From Source
-
-1. Clone this repository
-2. Navigate to the extension directory:
-   ```bash
-   cd vscode-extension
-   ```
-3. Install dependencies:
-   ```bash
-   npm install
-   ```
-4. Compile the extension:
-   ```bash
-   npm run compile
-   ```
-5. Press `F5` to open a new VS Code window with the extension loaded
-
-### From VSIX Package
-
-1. Download the `.vsix` file
-2. Open VS Code
-3. Go to Extensions view (`Ctrl+Shift+X` or `Cmd+Shift+X`)
-4. Click the `...` menu at the top of the Extensions view
-5. Select "Install from VSIX..."
-6. Choose the downloaded `.vsix` file
-
-## Usage
-
-1. **Start the Backend Service**: Ensure the RepoSense backend is running on `http://localhost:8000`
-
-2. **Open the Sidebar**: Click the RepoSense icon in the Activity Bar (left sidebar)
-
-3. **Analyze Workspace**: 
-   - Click the "Analyze Workspace" button
-   - The extension will send your workspace path to the backend
-   - Watch real-time progress updates as the analysis runs
-   - View the final health score when complete
-
-## How It Works
-
-1. When you click "Analyze Workspace", the extension:
-   - Reads your current workspace folder path
-   - Sends a POST request to `http://localhost:8000/analyze` with the path
-   - Receives a `job_id` in response
-
-2. The extension then polls `http://localhost:8000/results/{job_id}` every 3 seconds to:
-   - Check the analysis status
-   - Display progress updates (e.g., "✓ Architect complete...")
-   - Show the final health score when analysis is complete
-
-## API Endpoints
-
-The extension expects the following backend endpoints:
-
-### POST /analyze
-Request:
-```json
-{
-  "local_path": "/path/to/workspace"
-}
-```
-
-Response:
-```json
-{
-  "job_id": "unique-job-id"
-}
-```
-
-### GET /results/{job_id}
-Response (in progress):
-```json
-{
-  "job_id": "unique-job-id",
-  "status": "in_progress",
-  "progress": {
-    "architect": true
-  }
-}
-```
-
-Response (complete):
-```json
-{
-  "job_id": "unique-job-id",
-  "status": "completed",
-  "health_score": 85
-}
-```
-
-## Development
-
-### Building
+## Install & Run (Development)
 
 ```bash
+cd vscode-extension
+npm install
 npm run compile
 ```
 
-### Watching for Changes
+Then press `F5` in VS Code to launch an Extension Development Host with the extension loaded. Open any folder in that window and click the **RepoSense** icon in the Activity Bar.
+
+For watch mode during development:
 
 ```bash
 npm run watch
 ```
 
-### Debugging
+---
 
-1. Open the extension folder in VS Code
-2. Press `F5` to start debugging
-3. A new Extension Development Host window will open with the extension loaded
+## How It Works
 
-## Extension Settings
+On first launch, the extension calls `GET /config/status`. If watsonx credentials are missing, the webview shows a setup wizard that POSTs them to `/config/setup` (which writes them to `backend/.env`).
 
-This extension contributes the following:
+Once configured, the analysis flow is:
 
-- `reposense-sidebar`: Webview sidebar panel for RepoSense analysis
+1. Read the first workspace folder's path
+2. `POST /analyze` with `{ local_path }` → backend returns a `job_id`
+3. Poll `GET /jobs/{job_id}` every `pollingIntervalMs` (2s default)
+4. On `type: "result"`, render the payload in the webview and cache it per workspace folder
+5. On `type: "error"`, show the error message and stop polling
 
-## Known Issues
+Results are cached per workspace path. Switching workspace folders clears the cache and re-runs analysis automatically.
 
-- Backend service must be running on `http://localhost:8000` before using the extension
-- No configuration options for custom backend URLs (coming in future versions)
+---
 
-## Release Notes
+## Commands
 
-### 0.0.1
+| Command ID | Title | Behavior |
+|---|---|---|
+| `reposense.focusSidebar` | (status bar click) | Focuses the RepoSense sidebar view |
+| `reposense.refresh` | Refresh Analysis | Forces a fresh analysis, bypassing the cache |
+| `reposense.openInBrowser` | RepoSense: Open in Browser | Opens the cached report in a full editor panel |
 
-Initial release of RepoSense extension:
-- Workspace analysis with backend integration
-- Real-time progress updates
-- Health score display
-- Polling-based status checking
+The status bar item (left side) shows the current state: `Ready` / `Analyzing...` / `Score N/100` / `Error`.
 
-## License
+---
 
-See LICENSE file for details.
+## Settings
+
+Configurable via VS Code settings (`reposense.*`):
+
+| Setting | Default | Description |
+|---|---|---|
+| `reposense.backendUrl` | `http://localhost:8000` | URL of the RepoSense backend API |
+| `reposense.requestTimeoutMs` | `30000` | HTTP request timeout in milliseconds |
+| `reposense.pollingIntervalMs` | `2000` | How often to poll `/jobs/{id}` for results |
+
+---
+
+## Backend API Used
+
+The extension speaks to four backend endpoints. All analysis responses use a shared envelope:
+
+```ts
+interface ApiResponse {
+  type: 'request' | 'result' | 'error';
+  job_id: string;
+  progress: ProgressStep[];
+  payload: AnalysisResult | AnalysisError | null;
+}
+```
+
+### `POST /analyze`
+
+Request: `{ "local_path": "/absolute/path/to/workspace" }`
+
+Returns an `ApiResponse` with `type: "request"`, the new `job_id`, and the initial progress steps. `payload` is `null` at this point.
+
+### `GET /jobs/{job_id}`
+
+Returns the current state of the job:
+
+- **In progress** — `type: "request"`, `payload: null`, `progress[]` reflects which steps are `done`/`active`/`pending`.
+- **Done** — `type: "result"`, `payload: AnalysisResult` containing `{ score, architecture, review, docs, security }`.
+- **Failed** — `type: "error"`, `payload: AnalysisError` with `{ code, message, stage }`.
+
+### `GET /config/status`
+
+Returns `{ configured: boolean, missing_fields: string[] }` so the extension can decide whether to show the setup wizard.
+
+### `POST /config/setup`
+
+Body contains any subset of the watsonx credential fields. The backend persists non-empty values to `backend/.env` and reloads settings in memory. Returns the same shape as `/config/status`.
+
+The full TypeScript types mirroring the backend models live at the top of [`src/SidebarProvider.ts`](src/SidebarProvider.ts#L7-L136).
+
+---
+
+## Source Layout
+
+```
+vscode-extension/
+├── src/
+│   ├── extension.ts          # activate/deactivate, command registration
+│   ├── SidebarProvider.ts    # webview host, API calls, polling, caching
+│   └── config.ts             # reads reposense.* settings from VS Code
+├── webview/                  # HTML/CSS/JS UI rendered inside the sidebar (see webview/README.md)
+├── media/                    # icons
+├── out/                      # compiled JS (gitignored)
+├── package.json              # commands, views, settings contributions
+├── tsconfig.json
+├── SETUP.md                  # extended setup + troubleshooting walkthrough
+└── README.md
+```
+
+---
+
+## Troubleshooting
+
+- **Sidebar shows the setup wizard repeatedly** — backend reports credentials are still missing. Check `backend/.env` after submitting the wizard.
+- **"Failed to start analysis: Failed to fetch"** — backend isn't running at `reposense.backendUrl`, or CORS blocks the webview origin. See [SETUP.md](SETUP.md#troubleshooting).
+- **Polling never stops** — reload the window (`Developer: Reload Window`). The poller stops on `result`/`error` responses; a transient network blip retries up to 3 times before surfacing an error.
+
+For deeper setup notes (CORS, watsonx credentials, manual curl tests) see [SETUP.md](SETUP.md).
+
+---
+
+*Part of RepoSense · IBM Bob Hackathon 2026*

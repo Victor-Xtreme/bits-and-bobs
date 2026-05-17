@@ -125,6 +125,22 @@ Poll for status. While running, returns `type: "request"` with current `progress
 
 On failure, `type: "error"` with a code, message, and the stage that failed.
 
+### `DELETE /jobs/{job_id}`
+
+Remove a job from the in-memory store.
+
+### `POST /cleanup`
+
+Manually trigger cleanup of jobs older than `JOB_RETENTION_HOURS` (default 24). Returns `{ "removed": <count> }`.
+
+### `GET /config/status`
+
+Check whether all required watsonx credentials are set. Returns `{ "configured": bool, "missing_fields": [...] }`. The VS Code extension calls this on launch to decide whether to show its setup wizard.
+
+### `POST /config/setup`
+
+Persist any subset of watsonx credentials. Non-empty values are written to `backend/.env` and reloaded in memory. Returns the same shape as `/config/status`.
+
 ---
 
 ## Environment Variables
