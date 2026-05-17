@@ -548,6 +548,79 @@ async def generate_score(
         }
     }
     
+    # Calculate fallback score in case WatsonX fails
+    def calculate_fallback_score() -> HealthScore:
+        """Calculate score using rule-based logic as fallback"""
+        # Code Quality (30 points)
+        quality_score = 30
+        quality_score -= summary["review"]["critical"] * 5
+        quality_score -= summary["review"]["high"] * 2
+        quality_score = max(0, quality_score)
+        
+        # Security (30 points)
+        security_score = 30
+        security_score -= summary["security"]["critical_security"] * 5
+        security_score -= (summary["security"]["security_issues"] - summary["security"]["critical_security"]) * 2
+        security_score = max(0, security_score)
+        
+        # Documentation (20 points)
+        if summary["docs"]["documented_functions"] > 10:
+            doc_score = 20
+        elif summary["docs"]["documented_functions"] > 5:
+            doc_score = 15
+        elif summary["docs"]["documented_functions"] > 0:
+            doc_score = 10
+        else:
+            doc_score = 5
+        
+        # Architecture (20 points)
+        if summary["architecture"]["nodes"] > 10 and summary["architecture"]["edges"] > 15:
+            arch_score = 20
+        elif summary["architecture"]["nodes"] > 5:
+            arch_score = 15
+        elif summary["architecture"]["nodes"] > 0:
+            arch_score = 10
+        else:
+            arch_score = 5
+        
+        total_score = quality_score + security_score + doc_score + arch_score
+        
+        # Determine grade
+        if total_score >= 90:
+            grade = Grade.A
+        elif total_score >= 80:
+            grade = Grade.B
+        elif total_score >= 70:
+            grade = Grade.C
+        elif total_score >= 60:
+            grade = Grade.D
+        else:
+            grade = Grade.F
+        
+        # Generate priorities
+        priorities = []
+        if summary["review"]["critical"] > 0:
+            priorities.append(f"Fix {summary['review']['critical']} critical code quality issues")
+        if summary["security"]["critical_security"] > 0:
+            priorities.append(f"Address {summary['security']['critical_security']} critical security vulnerabilities")
+        if summary["docs"]["documented_functions"] == 0:
+            priorities.append("Add documentation for key functions")
+        if not priorities:
+            priorities = ["Continue maintaining code quality", "Keep security practices up to date", "Maintain documentation"]
+        
+        return HealthScore(
+            score=total_score,
+            grade=grade,
+            breakdown=ScoreBreakdown(
+                quality=quality_score,
+                security=security_score,
+                documentation=doc_score,
+                architecture=arch_score
+            ),
+            summary=f"Codebase analysis completed with fallback scoring. Found {summary['review']['total_findings']} code issues and {summary['security']['security_issues']} security concerns.",
+            top_priorities=priorities[:3]
+        )
+    
     prompt = f"""You are a code quality analyst. Given analysis from four specialized
 agents, produce an overall health scorecard for this codebase.
 
@@ -611,20 +684,25 @@ Grade mapping:
 IMPORTANT: Be honest and specific in your summary. Avoid generic phrases.
 Prioritize fixes by impact - what will improve the codebase most."""
 
-    response = await _call_watsonx(prompt)
-    data = _parse_json_response(response)
-    
-    return HealthScore(
-        score=data["score"],
-        grade=Grade(data["grade"]),
-        breakdown=ScoreBreakdown(
-            quality=data["breakdown"]["quality"],
-            security=data["breakdown"]["security"],
-            documentation=data["breakdown"]["documentation"],
-            architecture=data["breakdown"]["architecture"]
-        ),
-        summary=data["summary"],
-        top_priorities=data["top_priorities"]
-    )
+    try:
+        response = await _call_watsonx(prompt)
+        data = _parse_json_response(response)
+        
+        return HealthScore(
+            score=data["score"],
+            grade=Grade(data["grade"]),
+            breakdown=ScoreBreakdown(
+                quality=data["breakdown"]["quality"],
+                security=data["breakdown"]["security"],
+                documentation=data["breakdown"]["documentation"],
+                architecture=data["breakdown"]["architecture"]
+            ),
+            summary=data["summary"],
+            top_priorities=data["top_priorities"]
+        )
+    except (TimeoutError, ValueError, ConnectionError, KeyError) as e:
+        # Fallback to rule-based scoring if WatsonX fails
+        logger.warning(f"WatsonX scoring failed ({str(e)}), using fallback scoring")
+        return calculate_fallback_score()
 
 # Made with Bob

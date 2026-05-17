@@ -33,19 +33,17 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    // Register refresh command — always force a fresh analysis
+    // Register refresh command
     context.subscriptions.push(
         vscode.commands.registerCommand('reposense.refresh', () => {
             sidebarProvider.triggerAnalysis(true);
         })
     );
 
-    // Register open in browser command
+    // Open full report in editor tab
     context.subscriptions.push(
         vscode.commands.registerCommand('reposense.openInBrowser', () => {
-            vscode.window.showInformationMessage(
-                'RepoSense: Full web report view coming soon!'
-            );
+            sidebarProvider.openFullView();
         })
     );
 
