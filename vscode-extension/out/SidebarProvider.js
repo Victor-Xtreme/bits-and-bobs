@@ -30,6 +30,7 @@ exports.SidebarProvider = void 0;
 const vscode = __importStar(require("vscode"));
 const node_fetch_1 = __importDefault(require("node-fetch"));
 const config_1 = require("./config");
+const fs = __importStar(require("fs"));
 class SidebarProvider {
     constructor(_extensionUri, _statusBarItem) {
         this._extensionUri = _extensionUri;
@@ -54,6 +55,7 @@ class SidebarProvider {
         webviewView.webview.onDidReceiveMessage(async (data) => {
             switch (data.type) {
                 case 'analyzeWorkspace':
+                case 'retry':
                     await this._analyzeWorkspace();
                     break;
             }
@@ -77,6 +79,11 @@ class SidebarProvider {
         }
         const workspacePath = workspaceFolders[0].uri.fsPath;
         try {
+            // Send initial status
+            this._view.webview.postMessage({
+                type: 'loading',
+                step: 'Starting analysis...'
+            });
             // Update status bar to analyzing
             this._statusBarItem.text = '$(sync~spin) RepoSense: Analyzing...';
             // Send initial status to webview if available
@@ -158,6 +165,9 @@ class SidebarProvider {
                     clearInterval(this._pollingInterval);
                     this._pollingInterval = undefined;
                 }
+                this._view.webview.postMessage({
+                    type: 'results',
+                    data: result
                 // Update status bar with score
                 this._statusBarItem.text = `$(graph) RepoSense: Score ${result.score.score}/100`;
                 // Show completion notification
@@ -221,187 +231,32 @@ class SidebarProvider {
         if (!this._view) {
             return;
         }
-        const progressLines = [];
-        for (const step of steps) {
-            let icon = '';
-            switch (step.status) {
-                case 'done':
-                    icon = '✓';
-                    break;
-                case 'active':
-                    icon = '⟳';
-                    break;
-                case 'pending':
-                    icon = '○';
-                    break;
-            }
-            let line = `${icon} ${step.name}`;
-            if (step.files_processed !== undefined && step.files_total !== undefined) {
-                line += ` (${step.files_processed}/${step.files_total})`;
-            }
-            if (step.current_file) {
-                line += `\n  → ${step.current_file}`;
-            }
-            progressLines.push(line);
-        }
+        const activeStep = steps.find(s => s.status === 'active') || steps[steps.length - 1];
+        const completed = steps.filter(s => s.status === 'done').length;
+        const percentage = steps.length > 0 ? Math.round((completed / steps.length) * 100) : 0;
+        const stepName = activeStep ? activeStep.name : 'Processing...';
         this._view.webview.postMessage({
             type: 'progress',
-            message: progressLines.join('\n')
+            data: {
+                percentage: percentage,
+                step: stepName
+            }
         });
     }
     _getHtmlForWebview(webview) {
-        const nonce = this._getNonce();
-        return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
-    <title>RepoSense</title>
-    <style>
-        body {
-            padding: 20px;
-            color: var(--vscode-foreground);
-            font-family: var(--vscode-font-family);
-            font-size: var(--vscode-font-size);
-        }
-        h1 {
-            font-size: 1.5em;
-            margin-bottom: 20px;
-        }
-        button {
-            background-color: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
-            border: none;
-            padding: 10px 20px;
-            font-size: 14px;
-            cursor: pointer;
-            border-radius: 2px;
-            width: 100%;
-            margin-bottom: 20px;
-        }
-        button:hover {
-            background-color: var(--vscode-button-hoverBackground);
-        }
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        #status {
-            margin-top: 20px;
-            padding: 15px;
-            background-color: var(--vscode-editor-background);
-            border-radius: 4px;
-            white-space: pre-line;
-            line-height: 1.6;
-        }
-        .health-score {
-            font-size: 2em;
-            font-weight: bold;
-            color: var(--vscode-charts-green);
-            margin: 20px 0;
-        }
-        .error {
-            color: var(--vscode-errorForeground);
-        }
-        .progress {
-            color: var(--vscode-charts-blue);
-        }
-    </style>
-</head>
-<body>
-    <h1>RepoSense</h1>
-    <button id="analyzeBtn">Analyze Workspace</button>
-    <div id="status"></div>
-
-    <script nonce="${nonce}">
-        const vscode = acquireVsCodeApi();
-        const analyzeBtn = document.getElementById('analyzeBtn');
-        const statusDiv = document.getElementById('status');
-
-        analyzeBtn.addEventListener('click', () => {
-            analyzeBtn.disabled = true;
-            statusDiv.innerHTML = '';
-            vscode.postMessage({ type: 'analyzeWorkspace' });
-        });
-
-        window.addEventListener('message', event => {
-            const message = event.data;
-            
-            switch (message.type) {
-                case 'status':
-                    statusDiv.innerHTML = '<div class="progress">' + message.message + '</div>';
-                    break;
-                
-                case 'progress':
-                    statusDiv.innerHTML = '<div class="progress">' + message.message + '</div>';
-                    break;
-                
-                case 'complete':
-                    analyzeBtn.disabled = false;
-                    let resultHtml = '<div>✓ Analysis Complete!</div>';
-                    resultHtml += '<div class="health-score">Score: ' + message.healthScore + ' (Grade: ' + message.grade + ')</div>';
-                    
-                    if (message.result) {
-                        const result = message.result;
-                        
-                        // Show breakdown
-                        if (result.score && result.score.breakdown) {
-                            resultHtml += '<div style="margin-top: 15px;"><strong>Breakdown:</strong></div>';
-                            resultHtml += '<div style="margin-left: 10px;">';
-                            resultHtml += '• Quality: ' + result.score.breakdown.quality + '<br>';
-                            resultHtml += '• Security: ' + result.score.breakdown.security + '<br>';
-                            resultHtml += '• Documentation: ' + result.score.breakdown.documentation + '<br>';
-                            resultHtml += '• Architecture: ' + result.score.breakdown.architecture;
-                            resultHtml += '</div>';
-                        }
-                        
-                        // Show top priorities
-                        if (result.score && result.score.top_priorities && result.score.top_priorities.length > 0) {
-                            resultHtml += '<div style="margin-top: 15px;"><strong>Top Priorities:</strong></div>';
-                            resultHtml += '<div style="margin-left: 10px;">';
-                            result.score.top_priorities.forEach((priority, idx) => {
-                                resultHtml += (idx + 1) + '. ' + priority + '<br>';
-                            });
-                            resultHtml += '</div>';
-                        }
-                        
-                        // Show summary
-                        if (result.score && result.score.summary) {
-                            resultHtml += '<div style="margin-top: 15px;"><strong>Summary:</strong></div>';
-                            resultHtml += '<div style="margin-left: 10px;">' + result.score.summary + '</div>';
-                        }
-                        
-                        // Show counts
-                        resultHtml += '<div style="margin-top: 15px;"><strong>Analysis Details:</strong></div>';
-                        resultHtml += '<div style="margin-left: 10px;">';
-                        if (result.review && result.review.findings) {
-                            resultHtml += '• Code Review Findings: ' + result.review.findings.length + '<br>';
-                        }
-                        if (result.security && result.security.security) {
-                            resultHtml += '• Security Issues: ' + result.security.security.length + '<br>';
-                        }
-                        if (result.security && result.security.modernization) {
-                            resultHtml += '• Modernization Items: ' + result.security.modernization.length + '<br>';
-                        }
-                        if (result.architecture && result.architecture.nodes) {
-                            resultHtml += '• Architecture Nodes: ' + result.architecture.nodes.length + '<br>';
-                        }
-                        resultHtml += '</div>';
-                    }
-                    
-                    statusDiv.innerHTML = resultHtml;
-                    break;
-                
-                case 'error':
-                    analyzeBtn.disabled = false;
-                    statusDiv.innerHTML = '<div class="error">Error: ' + message.message + '</div>';
-                    break;
-            }
-        });
-    </script>
-</body>
-</html>`;
+        // Get paths to resources
+        const htmlPath = vscode.Uri.joinPath(this._extensionUri, 'webview', 'main.html');
+        const cssPath = vscode.Uri.joinPath(this._extensionUri, 'webview', 'styles.css');
+        const jsPath = vscode.Uri.joinPath(this._extensionUri, 'webview', 'main.js');
+        // Convert to webview URIs
+        const cssUri = webview.asWebviewUri(cssPath);
+        const jsUri = webview.asWebviewUri(jsPath);
+        // Read HTML file
+        let html = fs.readFileSync(htmlPath.fsPath, 'utf8');
+        // Replace resource paths with webview URIs
+        html = html.replace('href="styles.css"', `href="${cssUri}"`);
+        html = html.replace('src="main.js"', `src="${jsUri}"`);
+        return html;
     }
     _getNonce() {
         let text = '';
