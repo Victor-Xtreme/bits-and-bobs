@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     watsonx_api_key: str = ""
     watsonx_project_id: str = ""
     watsonx_url: str = "https://us-south.ml.cloud.ibm.com"
-    watsonx_model_id: str = "openai/gpt-oss-120b"
+    watsonx_model_id: str = "meta-llama/llama-3-3-70b-instruct"
 
     # WatsonX Orchestrate Configuration
     orchestrate_api_key: str = ""
