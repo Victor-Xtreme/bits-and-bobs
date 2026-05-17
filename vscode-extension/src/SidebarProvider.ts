@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import fetch from 'node-fetch';
 import { getConfig } from './config';
 import * as fs from 'fs';
-import * as path from 'path';
 
 // Backend API Models (matching models.py)
 type PayloadType = 'request' | 'result' | 'error';
@@ -278,16 +277,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         }
 
         try {
-            const config = getConfig();
-            const response = await fetch(`${config.backendUrl}/jobs/${jobId}`, {
-                timeout: config.requestTimeoutMs
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const apiResponse = await response.json() as ApiResponse;
+            const apiResponse = await this._fetchJobResult(jobId);
 
             // Reset retry count on successful response
             this._retryCount = 0;
@@ -295,88 +285,104 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             // Update progress display
             this._updateProgress(apiResponse.progress);
 
-            // Handle different response types based on 'type' field
-            if (apiResponse.type === 'result' && apiResponse.payload) {
-                // Analysis completed successfully
-                const result = apiResponse.payload as AnalysisResult;
-                
-                // Stop polling
-                if (this._pollingInterval) {
-                    clearInterval(this._pollingInterval);
-                    this._pollingInterval = undefined;
-                }
-
-                this._view.webview.postMessage({
-                    type: 'results',
-                    data: result
-                });
-                // Update status bar with score
-                this._statusBarItem.text = `$(graph) RepoSense: Score ${result.score.score}/100`;
-
-                // Show completion notification
-                vscode.window.showInformationMessage(
-                    `RepoSense: Analysis complete — Score ${result.score.score}/100`,
-                    'View Details'
-                ).then(selection => {
-                    if (selection === 'View Details') {
-                        vscode.commands.executeCommand('reposense-sidebar.focus');
-                    }
-                });
-
-                // Send completion message with health score from payload.score.score
-                if (this._view) {
-                    this._view.webview.postMessage({
-                        type: 'complete',
-                        healthScore: result.score.score,
-                        grade: result.score.grade,
-                        summary: result.score.summary,
-                        result: result
-                    });
-                }
-            } else if (apiResponse.type === 'error' && apiResponse.payload) {
-                // Analysis failed
-                const error = apiResponse.payload as AnalysisError;
-                
-                // Stop polling
-                if (this._pollingInterval) {
-                    clearInterval(this._pollingInterval);
-                    this._pollingInterval = undefined;
-                }
-
-                // Update status bar to error
-                this._statusBarItem.text = '$(error) RepoSense: Error';
-
-                if (this._view) {
-                    this._view.webview.postMessage({
-                        type: 'error',
-                        message: `${error.stage}: ${error.message} (${error.code})`
-                    });
-                }
-            }
-            // If type is 'request', continue polling (analysis still in progress)
-
+            this._processApiResponse(apiResponse);
         } catch (error) {
-            // Retry logic: don't stop immediately, retry up to maxRetries times
-            this._retryCount++;
-            
-            if (this._retryCount >= this._maxRetries) {
-                // Stop polling after max retries
-                if (this._pollingInterval) {
-                    clearInterval(this._pollingInterval);
-                    this._pollingInterval = undefined;
-                }
+            this._handleCheckResultsError(error);
+        }
+    }
 
-                // Update status bar to error
-                this._statusBarItem.text = '$(error) RepoSense: Error';
+    private async _fetchJobResult(jobId: string): Promise<ApiResponse> {
+        const config = getConfig();
+        const response = await fetch(`${config.backendUrl}/jobs/${jobId}`, {
+            timeout: config.requestTimeoutMs
+        });
 
-                if (this._view) {
-                    this._view.webview.postMessage({
-                        type: 'error',
-                        message: `Failed to check results after ${this._maxRetries} retries: ${error instanceof Error ? error.message : String(error)}`
-                    });
-                }
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        return await response.json() as ApiResponse;
+    }
+
+    private _processApiResponse(apiResponse: ApiResponse) {
+        if (apiResponse.type === 'result' && apiResponse.payload) {
+            this._handleResult(apiResponse.payload as AnalysisResult);
+            return;
+        }
+
+        if (apiResponse.type === 'error' && apiResponse.payload) 
+            this._handleAnalysisError(apiResponse.payload as AnalysisError);
+    }
+
+    private _handleCheckResultsError(error: unknown) {
+        // Retry logic: don't stop immediately, retry up to maxRetries times
+        this._retryCount++;
+
+        if (this._retryCount < this._maxRetries) {
+            return;
+        }
+
+        // Stop polling after max retries
+        if (this._pollingInterval) {
+            clearInterval(this._pollingInterval);
+            this._pollingInterval = undefined;
+        }
+
+        // Update status bar to error
+        this._statusBarItem.text = '$(error) RepoSense: Error';
+
+        if (this._view) {
+            this._view.webview.postMessage({
+                type: 'error',
+                message: `Failed to check results after ${this._maxRetries} retries: ${error instanceof Error ? error.message : String(error)}`
+            });
+        }
+    }
+
+    private _handleResult(result: AnalysisResult) {
+        // Stop polling
+        if (this._pollingInterval) {
+            clearInterval(this._pollingInterval);
+            this._pollingInterval = undefined;
+        }
+
+        this._view!.webview.postMessage({ type: 'results', data: result });
+        this._statusBarItem.text = `$(graph) RepoSense: Score ${result.score.score}/100`;
+
+        vscode.window.showInformationMessage(
+            `RepoSense: Analysis complete — Score ${result.score.score}/100`,
+            'View Details'
+        ).then((selection: string | undefined) => {
+            if (selection === 'View Details') {
+                vscode.commands.executeCommand('reposense-sidebar.focus');
             }
-            // Otherwise, continue polling and retry
+        });
+
+        if (this._view) {
+            this._view.webview.postMessage({
+                type: 'complete',
+                healthScore: result.score.score,
+                grade: result.score.grade,
+                summary: result.score.summary,
+                result: result
+            });
+        }
+    }
+
+    private _handleAnalysisError(error: AnalysisError) {
+        // Stop polling
+        if (this._pollingInterval) {
+            clearInterval(this._pollingInterval);
+            this._pollingInterval = undefined;
+        }
+
+        this._statusBarItem.text = '$(error) RepoSense: Error';
+
+        if (this._view) {
+            this._view.webview.postMessage({
+                type: 'error',
+                message: `${error.stage}: ${error.message} (${error.code})`
+            });
         }
     }
 
