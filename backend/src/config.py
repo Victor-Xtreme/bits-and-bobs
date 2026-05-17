@@ -132,6 +132,32 @@ class Settings(BaseSettings):
     def is_configured(self) -> bool:
         return len(self.missing_fields()) == 0
 
+    async def validate_credentials(self) -> tuple[bool, str]:
+        """
+        Do a real IAM token exchange to verify orchestrate_api_key is valid.
+        Returns (True, "") on success, or (False, error_message) on failure.
+        Called by GET /config/validate — not on every /config/status check.
+        """
+        import httpx
+        if not self.orchestrate_api_key.strip():
+            return False, "orchestrate_api_key is empty"
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.post(
+                    "https://iam.cloud.ibm.com/identity/token",
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    data={
+                        "grant_type": "urn:ibm:params:oauth:grant-type:apikey",
+                        "apikey": self.orchestrate_api_key,
+                    }
+                )
+            if response.status_code == 200:
+                return True, ""
+            body = response.json()
+            return False, body.get("errorMessage", f"IAM returned {response.status_code}")
+        except Exception as e:
+            return False, str(e)
+
 
 # Global settings instance
 # Note: This will fail at import time if required env vars are missing.

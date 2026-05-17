@@ -63,6 +63,13 @@ class SidebarProvider {
                         webviewView.webview.postMessage({ type: 'setup' });
                         return;
                     }
+                    if (status === 'unavailable') {
+                        webviewView.webview.postMessage({
+                            type: 'error',
+                            message: 'Cannot reach the RepoSense backend. Make sure it is running.'
+                        });
+                        return;
+                    }
                     const currentPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
                     if (currentPath && this._cachedWorkspacePath === currentPath && this._cachedResult) {
                         this._handleResult(this._cachedResult);
@@ -76,9 +83,22 @@ class SidebarProvider {
                     break;
                 }
                 case 'analyzeWorkspace':
-                case 'retry':
+                case 'retry': {
+                    const status = await this._checkBackendConfig();
+                    if (status === 'not_configured') {
+                        webviewView.webview.postMessage({ type: 'setup' });
+                        return;
+                    }
+                    if (status === 'unavailable') {
+                        webviewView.webview.postMessage({
+                            type: 'error',
+                            message: 'Cannot reach the RepoSense backend. Make sure it is running.'
+                        });
+                        return;
+                    }
                     await this._analyzeWorkspace(true);
                     break;
+                }
                 case 'openFullView':
                     this._openEditorPanel();
                     break;
@@ -86,6 +106,16 @@ class SidebarProvider {
                     const msgData = data;
                     try {
                         await this._saveConfig(msgData.data);
+                        // After saving, do a real IAM validation to catch bad keys
+                        // before we attempt an analysis.
+                        const valid = await this._validateCredentials();
+                        if (!valid) {
+                            webviewView.webview.postMessage({
+                                type: 'error',
+                                message: 'Credentials saved but API key validation failed. Please check your Orchestrate API key.'
+                            });
+                            return;
+                        }
                         const status = await this._checkBackendConfig();
                         if (status === 'configured') {
                             const currentPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -145,6 +175,22 @@ class SidebarProvider {
         }
         catch {
             return 'unavailable';
+        }
+    }
+    async _validateCredentials() {
+        try {
+            const config = (0, config_1.getConfig)();
+            const response = await (0, node_fetch_1.default)(`${config.backendUrl}/config/validate`, {
+                timeout: config.requestTimeoutMs
+            });
+            if (!response.ok) {
+                return false;
+            }
+            const data = await response.json();
+            return data.valid === true;
+        }
+        catch {
+            return false;
         }
     }
     async _saveConfig(configData) {
@@ -327,6 +373,16 @@ class SidebarProvider {
             this._pollingInterval = undefined;
         }
         this._statusBarItem.text = '$(error) RepoSense: Error';
+        // IAM token failures mean the stored credentials are invalid — send
+        // the user back to the setup screen instead of showing a raw error.
+        const isAuthFailure = error.message.includes('IAM token') ||
+            error.message.includes('apikey') ||
+            error.message.includes('Authentication failed') ||
+            error.message.includes('BXNIM');
+        if (isAuthFailure && this._view) {
+            this._view.webview.postMessage({ type: 'setup' });
+            return;
+        }
         if (this._view) {
             this._view.webview.postMessage({
                 type: 'error',
