@@ -181,6 +181,9 @@ html, body {
 
 .btn-ghost:hover { color: var(--fg); border-color: var(--purple); }
 
+.btn-accent { color: var(--purple); border-color: var(--purple); }
+.btn-accent:hover { color: var(--pink); border-color: var(--pink); background: rgba(139,92,246,.08); }
+
 /* ── Panel base ─────────────────────────────────────────────────────────── */
 .panel { animation: rise .2s ease; }
 .panel.hidden { display: none; }
