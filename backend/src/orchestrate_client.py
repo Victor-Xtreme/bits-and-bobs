@@ -264,15 +264,29 @@ class OrchestrateClient:
 _orchestrate_client: Optional[OrchestrateClient] = None
 
 
+def _client_matches_settings(client: OrchestrateClient) -> bool:
+    """Return True when the cached client reflects current runtime settings."""
+    return (
+        client.api_key == settings.orchestrate_api_key
+        and client.base_url == settings.orchestrate_url.rstrip('/')
+        and client.architect_agent_id == settings.orchestrate_agent_architect_id
+        and client.reviewer_agent_id == settings.orchestrate_agent_reviewer_id
+        and client.documenter_agent_id == settings.orchestrate_agent_documenter_id
+        and client.hardener_agent_id == settings.orchestrate_agent_hardener_id
+        and client.environment_id == settings.orchestrate_environment_id
+        and client.instance_id == settings.orchestrate_instance_id
+        and client.timeout == settings.orchestrate_timeout
+    )
+
+
 def get_orchestrate_client() -> OrchestrateClient:
     """
-    Get or create the global Orchestrate client instance.
-    
-    Returns:
-        OrchestrateClient instance
+    Get the Orchestrate client, recreating it if settings changed at runtime.
+
+    This avoids stale credentials after /config/setup updates.
     """
     global _orchestrate_client
-    if _orchestrate_client is None:
+    if _orchestrate_client is None or not _client_matches_settings(_orchestrate_client):
         _orchestrate_client = OrchestrateClient()
     return _orchestrate_client
 
