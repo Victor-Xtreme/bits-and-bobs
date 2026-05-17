@@ -1,0 +1,3 @@
+# Force LF for shell scripts so they remain runnable on Mac/Linux
+# even if a Windows user with core.autocrlf=true commits changes.
+*.sh text eol=lf

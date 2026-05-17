@@ -56,17 +56,44 @@ FastAPI Backend (Python)
 
 ### Prerequisites
 
-- Python 3.10+
-- Node.js 18+
-- VS Code
-- IBM watsonx credentials (API key + project ID)
+- **Python 3.11, 3.12, or 3.13** (constrained by `ibm-watsonx-ai==1.5.11` which requires `>=3.11,<3.14`). Install from [python.org](https://www.python.org/downloads/).
+- **Node.js 18+** (LTS recommended). Install from [nodejs.org](https://nodejs.org/).
+- **VS Code** with the `code` command in PATH.
+  - macOS: open VS Code → `Cmd+Shift+P` → "Shell Command: Install 'code' command in PATH".
+  - Windows: re-run the VS Code installer and check "Add to PATH".
+- **bash** (built-in on macOS/Linux; on Windows install [Git for Windows](https://gitforwindows.org/) and run from Git Bash).
+- IBM watsonx credentials (entered via the in-app setup wizard — no manual `.env` editing required).
 
-### 1. Start the backend
+### Quick Start (Recommended)
+
+Execute `run.sh` from the repo root to set up everything and launch the application:
+
+```bash
+./run.sh
+```
+
+The script will:
+
+1. **Check prerequisites** — Python (correct version), Node.js, npm, `code` CLI, port 8000. Bails early with a clear message if anything's missing.
+2. Create a Python virtual environment in `venv/` using a compatible Python.
+3. Install backend dependencies from `backend/requirements.txt`.
+4. Install extension dependencies with `npm install` and compile the TypeScript.
+5. Start the uvicorn backend on `http://localhost:8000` and wait until it actually responds (not just "process exists").
+6. Launch VS Code with the extension loaded in development mode.
+
+The backend keeps running in the background. Press `Ctrl+C` to stop the launcher; the backend's PID is printed so you can `kill` it when you're done.
+
+On first launch, the RepoSense sidebar shows a setup wizard for your watsonx credentials. The wizard writes them to `backend/.env` and reloads settings in memory.
+
+### Manual Setup
+
+If you prefer to run components separately:
+
+#### 1. Start the backend
 
 ```bash
 cd backend
 pip install -r requirements.txt
-cp .env.example .env        # fill in your watsonx credentials
 uvicorn src.main:app --reload
 ```
 
@@ -77,7 +104,7 @@ curl http://localhost:8000/
 # {"service":"RepoSense API","status":"running","version":"1.0.0"}
 ```
 
-### 2. Run the extension
+#### 2. Run the extension
 
 ```bash
 cd vscode-extension
@@ -85,6 +112,12 @@ npm install
 ```
 
 Press `F5` in VS Code to launch the Extension Development Host, open any project folder, and click the RepoSense icon in the sidebar.
+
+#### 3. Configure credentials
+
+On first launch, the sidebar shows a setup wizard. Enter your watsonx credentials there — the extension posts them to `/config/setup`, which persists them to `backend/.env` and reloads settings in memory. No manual `.env` editing required.
+
+If you'd rather pre-populate `.env` yourself, copy `backend/.env.example` to `backend/.env` and fill in the real values (not the placeholder strings — the backend treats non-empty placeholders as "configured" and skips the wizard).
 
 ---
 
