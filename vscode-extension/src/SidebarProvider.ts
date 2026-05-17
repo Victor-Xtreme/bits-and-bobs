@@ -142,16 +142,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     private _retryCount: number = 0;
     private readonly _maxRetries: number = 3;
 
+    // Cache
+    private _cachedResult: AnalysisResult | null = null;
+    private _cachedWorkspacePath: string | null = null;
+    private _isDirty: boolean = true;
+    private _fileWatcher?: vscode.FileSystemWatcher;
+
     constructor(
         private readonly _extensionUri: vscode.Uri,
         private readonly _statusBarItem: vscode.StatusBarItem
     ) {}
 
-    /**
-     * Public method to trigger analysis (called from extension.ts)
-     */
-    public triggerAnalysis() {
-        this._analyzeWorkspace();
+    public triggerAnalysis(force: boolean = false) {
+        this._analyzeWorkspace(force);
     }
 
     public resolveWebviewView(webviewView: vscode.WebviewView) {
@@ -168,8 +171,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         webviewView.webview.onDidReceiveMessage(async (data: { type: string }) => {
             switch (data.type) {
                 case 'analyzeWorkspace':
+                    await this._analyzeWorkspace(false);
+                    break;
                 case 'retry':
-                    await this._analyzeWorkspace();
+                    await this._analyzeWorkspace(true);
                     break;
             }
         });
@@ -179,7 +184,22 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         this._view = panel;
     }
 
-    private async _analyzeWorkspace() {
+    private _setupWatcher(workspacePath: string) {
+        this._fileWatcher?.dispose();
+        const pattern = new vscode.RelativePattern(workspacePath, '**/*.{py,js,ts,java,go,rs}');
+        this._fileWatcher = vscode.workspace.createFileSystemWatcher(pattern);
+        const markDirty = () => {
+            if (!this._isDirty) {
+                this._isDirty = true;
+                this._statusBarItem.text = '$(sync) RepoSense: Changes detected — click to re-analyze';
+            }
+        };
+        this._fileWatcher.onDidChange(markDirty);
+        this._fileWatcher.onDidCreate(markDirty);
+        this._fileWatcher.onDidDelete(markDirty);
+    }
+
+    private async _analyzeWorkspace(force: boolean = false) {
         // Get workspace folder path
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -194,6 +214,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         }
 
         const workspacePath = workspaceFolders[0].uri.fsPath;
+
+        // Set up file watcher if the folder changed
+        if (workspacePath !== this._cachedWorkspacePath) {
+            this._isDirty = true;
+            this._cachedResult = null;
+            this._setupWatcher(workspacePath);
+        }
+
+        // Serve from cache if clean and not forced
+        if (!force && !this._isDirty && this._cachedResult) {
+            this._handleResult(this._cachedResult);
+            return;
+        }
 
         try {
             // Send initial status
@@ -346,6 +379,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             this._pollingInterval = undefined;
         }
 
+        // Update cache
+        this._cachedResult = result;
+        this._cachedWorkspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
+        this._isDirty = false;
+
         this._view!.webview.postMessage({ type: 'results', data: result });
         this._statusBarItem.text = `$(graph) RepoSense: Score ${result.score.score}/100`;
 
@@ -438,6 +476,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         if (this._pollingInterval) {
             clearInterval(this._pollingInterval);
         }
+        this._fileWatcher?.dispose();
     }
 }
 
