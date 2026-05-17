@@ -1,0 +1,16 @@
+# Core Framework
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+# IBM WatsonX AI
+ibm-watsonx-ai
+
+# HTTP Client
+httpx
+
+# Environment Variables
+python-dotenv
+
+# Async Support
+asyncio
