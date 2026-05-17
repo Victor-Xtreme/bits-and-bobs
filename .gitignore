@@ -186,3 +186,4 @@ docs/_templates/
 pyrightconfig.json
 
 # Made with Bob
+.github/agents/code-auditor.agent.md
