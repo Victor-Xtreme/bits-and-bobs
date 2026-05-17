@@ -36,6 +36,15 @@
 
     <!-- Main Content Area -->
     <main class="content-area">
+        <!-- Idle State (no workspace open) -->
+        <div id="idleState" class="state-panel hidden">
+            <div class="error-container">
+                <div class="error-icon">📂</div>
+                <h2>No Workspace Open</h2>
+                <p class="error-message">Open a folder to get started.</p>
+            </div>
+        </div>
+
         <!-- Loading State -->
         <div id="loadingState" class="state-panel">
             <div class="loading-container">
@@ -61,6 +70,7 @@
         <!-- Health Score Panel -->
         <div id="healthPanel" class="panel hidden">
             <div class="score-card">
+            <button id="rerunButton" class="retry-button" style="margin-bottom: 16px;">Run Analysis Again</button>
                 <div class="score-ring-container">
                     <svg class="score-ring" viewBox="0 0 100 100">
                         <circle class="ring-bg" cx="50" cy="50" r="40"/>

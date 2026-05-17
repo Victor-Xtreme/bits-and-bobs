@@ -44,16 +44,15 @@ function activate(context) {
     }));
     // Register refresh command
     context.subscriptions.push(vscode.commands.registerCommand('reposense.refresh', () => {
-        sidebarProvider.triggerAnalysis();
+        sidebarProvider.triggerAnalysis(true);
     }));
     // Register open in browser command
     context.subscriptions.push(vscode.commands.registerCommand('reposense.openInBrowser', () => {
         vscode.window.showInformationMessage('RepoSense: Full web report view coming soon!');
     }));
-    // Listen to workspace folder changes
+    // Listen to workspace folder changes — always force fresh analysis
     context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
-        // Automatically re-run analysis when workspace folder changes
-        sidebarProvider.triggerAnalysis();
+        sidebarProvider.triggerAnalysis(true);
     }));
 }
 exports.activate = activate;

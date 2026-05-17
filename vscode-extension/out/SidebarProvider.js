@@ -37,12 +37,12 @@ class SidebarProvider {
         this._statusBarItem = _statusBarItem;
         this._retryCount = 0;
         this._maxRetries = 3;
+        // Cache — keyed per workspace folder path
+        this._cachedResult = null;
+        this._cachedWorkspacePath = null;
     }
-    /**
-     * Public method to trigger analysis (called from extension.ts)
-     */
-    triggerAnalysis() {
-        this._analyzeWorkspace();
+    triggerAnalysis(force = false) {
+        this._analyzeWorkspace(force);
     }
     resolveWebviewView(webviewView) {
         this._view = webviewView;
@@ -54,9 +54,23 @@ class SidebarProvider {
         // Handle messages from the webview
         webviewView.webview.onDidReceiveMessage(async (data) => {
             switch (data.type) {
+                case 'ready': {
+                    // Webview is loaded — safe to send messages now
+                    const currentPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                    if (currentPath && this._cachedWorkspacePath === currentPath && this._cachedResult) {
+                        this._handleResult(this._cachedResult);
+                    }
+                    else if (currentPath) {
+                        await this._analyzeWorkspace(false);
+                    }
+                    else {
+                        webviewView.webview.postMessage({ type: 'idle' });
+                    }
+                    break;
+                }
                 case 'analyzeWorkspace':
                 case 'retry':
-                    await this._analyzeWorkspace();
+                    await this._analyzeWorkspace(true);
                     break;
             }
         });
@@ -64,8 +78,7 @@ class SidebarProvider {
     revive(panel) {
         this._view = panel;
     }
-    async _analyzeWorkspace() {
-        // Get workspace folder path
+    async _analyzeWorkspace(force = false) {
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (!workspaceFolders || workspaceFolders.length === 0) {
             this._statusBarItem.text = '$(error) RepoSense: Error';
@@ -78,6 +91,10 @@ class SidebarProvider {
             return;
         }
         const workspacePath = workspaceFolders[0].uri.fsPath;
+        // Clear cache when switching folders
+        if (workspacePath !== this._cachedWorkspacePath) {
+            this._cachedResult = null;
+        }
         try {
             // Send initial status
             if (this._view) {
@@ -201,6 +218,9 @@ class SidebarProvider {
             clearInterval(this._pollingInterval);
             this._pollingInterval = undefined;
         }
+        // Store in cache
+        this._cachedResult = result;
+        this._cachedWorkspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
         this._view.webview.postMessage({ type: 'results', data: result });
         this._statusBarItem.text = `$(graph) RepoSense: Score ${result.score.score}/100`;
         vscode.window.showInformationMessage(`RepoSense: Analysis complete — Score ${result.score.score}/100`, 'View Details').then((selection) => {

@@ -70,9 +70,19 @@ function showResults(data) {
     switchPanel('health');
 }
 
+function showIdleState() {
+    document.getElementById('loadingState').classList.add('hidden');
+    document.getElementById('errorState').classList.add('hidden');
+    document.querySelectorAll('.panel').forEach(p => p.classList.add('hidden'));
+    const idle = document.getElementById('idleState');
+    if (idle) idle.classList.remove('hidden');
+}
+
 function hideAllStates() {
     document.getElementById('loadingState').classList.add('hidden');
     document.getElementById('errorState').classList.add('hidden');
+    const idle = document.getElementById('idleState');
+    if (idle) idle.classList.add('hidden');
 }
 
 function updateBadges(data) {
@@ -815,7 +825,7 @@ let graphRendered = false; // Track if architecture graph has been rendered
 document.addEventListener('DOMContentLoaded', () => {
     initializeEventListeners();
     showLoadingState();
-    vscode.postMessage({ type: 'analyzeWorkspace' });
+    vscode.postMessage({ type: 'ready' });
 });
 
 // Message listener from extension
@@ -824,6 +834,9 @@ window.addEventListener('message', event => {
     console.log('Received message:', msg.type);
     
     switch (msg.type) {
+        case 'idle':
+            showIdleState();
+            break;
         case 'loading':
             showLoadingState(msg.step);
             break;
@@ -850,10 +863,19 @@ function initializeEventListeners() {
         });
     });
     
-    // Retry button
+    // Retry button (error state)
     const retryButton = document.getElementById('retryButton');
     if (retryButton) {
         retryButton.addEventListener('click', () => {
+            vscode.postMessage({ type: 'retry' });
+            showLoadingState();
+        });
+    }
+
+    // Re-run button (results state)
+    const rerunButton = document.getElementById('rerunButton');
+    if (rerunButton) {
+        rerunButton.addEventListener('click', () => {
             vscode.postMessage({ type: 'retry' });
             showLoadingState();
         });

@@ -33,7 +33,7 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    // Register refresh command — always force a fresh analysis
+    // Register refresh command
     context.subscriptions.push(
         vscode.commands.registerCommand('reposense.refresh', () => {
             sidebarProvider.triggerAnalysis(true);
