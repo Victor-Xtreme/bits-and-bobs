@@ -3,32 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' https://cdn.jsdelivr.net http: https: vscode-webview-resource:; script-src 'unsafe-inline' https://cdn.jsdelivr.net http: https: vscode-webview-resource:; img-src https: data: http: vscode-webview-resource:; connect-src ws: wss: http: https:;">
-    <title>RepoSense Analysis</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' https://cdn.jsdelivr.net vscode-webview-resource:; script-src 'unsafe-inline' https://cdn.jsdelivr.net vscode-webview-resource:; img-src https: data: vscode-webview-resource:; connect-src ws: wss: http: https:;">
+    <title>RepoSense</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+
     <!-- Navigation Tabs -->
     <nav class="tab-bar">
         <button class="tab-button active" data-panel="health">
-            <span class="tab-icon">📊</span>
-            <span class="tab-label">Health Score</span>
+            <span class="tab-icon">◎</span>
+            <span class="tab-label">Score</span>
         </button>
         <button class="tab-button" data-panel="architecture">
-            <span class="tab-icon">🏗️</span>
-            <span class="tab-label">Architecture</span>
+            <span class="tab-icon">⬡</span>
+            <span class="tab-label">Arch</span>
         </button>
         <button class="tab-button" data-panel="review">
-            <span class="tab-icon">🔍</span>
-            <span class="tab-label">Code Review</span>
+            <span class="tab-icon">◈</span>
+            <span class="tab-label">Review</span>
             <span class="tab-badge" id="reviewBadge"></span>
         </button>
         <button class="tab-button" data-panel="docs">
-            <span class="tab-icon">📚</span>
-            <span class="tab-label">Documentation</span>
+            <span class="tab-icon">◻</span>
+            <span class="tab-label">Docs</span>
         </button>
         <button class="tab-button" data-panel="security">
-            <span class="tab-icon">🔒</span>
+            <span class="tab-icon">◆</span>
             <span class="tab-label">Security</span>
             <span class="tab-badge" id="securityBadge"></span>
         </button>
@@ -36,21 +37,22 @@
 
     <!-- Main Content Area -->
     <main class="content-area">
-        <!-- Idle State (no workspace open) -->
+
+        <!-- Idle State -->
         <div id="idleState" class="state-panel hidden">
-            <div class="error-container">
-                <div class="error-icon">📂</div>
-                <h2>No Workspace Open</h2>
-                <p class="error-message">Open a folder to get started.</p>
+            <div class="state-inner">
+                <div class="state-icon">—</div>
+                <p class="state-title">No folder open</p>
+                <p class="state-sub">Open a workspace folder to begin.</p>
             </div>
         </div>
 
         <!-- Loading State -->
         <div id="loadingState" class="state-panel">
-            <div class="loading-container">
-                <div class="pulse-loader"></div>
-                <h2>Analyzing Repository...</h2>
-                <p id="loadingStep" class="loading-step">Initializing...</p>
+            <div class="state-inner">
+                <div class="spinner"></div>
+                <p class="state-title">Scanning your repo</p>
+                <p class="state-sub" id="loadingStep">Initializing...</p>
                 <div class="progress-bar">
                     <div id="progressFill" class="progress-fill"></div>
                 </div>
@@ -59,119 +61,107 @@
 
         <!-- Error State -->
         <div id="errorState" class="state-panel hidden">
-            <div class="error-container">
-                <div class="error-icon">⚠️</div>
-                <h2>Analysis Failed</h2>
-                <p id="errorMessage" class="error-message"></p>
-                <button id="retryButton" class="retry-button">Retry Analysis</button>
+            <div class="state-inner">
+                <div class="state-icon err">✕</div>
+                <p class="state-title">Analysis failed</p>
+                <p class="state-sub" id="errorMessage"></p>
+                <button id="retryButton" class="btn-primary">Try again</button>
             </div>
         </div>
 
         <!-- Health Score Panel -->
         <div id="healthPanel" class="panel hidden">
-            <div class="score-card">
-            <button id="rerunButton" class="retry-button" style="margin-bottom: 16px;">Run Analysis Again</button>
-                <div class="score-ring-container">
+            <div class="panel-actions">
+                <button id="expandButton" class="btn-ghost">⤢ Full view</button>
+                <button id="rerunButton"  class="btn-ghost">↺ Re-run</button>
+            </div>
+
+            <div class="score-hero">
+                <div class="score-ring-wrap">
                     <svg class="score-ring" viewBox="0 0 100 100">
-                        <circle class="ring-bg" cx="50" cy="50" r="40"/>
+                        <defs>
+                            <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%"   stop-color="#8b5cf6"/>
+                                <stop offset="100%" stop-color="#ec4899"/>
+                            </linearGradient>
+                        </defs>
+                        <circle class="ring-track" cx="50" cy="50" r="40"/>
                         <circle id="ringFill" class="ring-fill" cx="50" cy="50" r="40"
+                                stroke="url(#ringGrad)"
                                 stroke-dasharray="251"
                                 stroke-dashoffset="251"/>
                     </svg>
-                    <div class="score-number" id="scoreNum">0</div>
+                    <span class="score-num" id="scoreNum">—</span>
                 </div>
-                <div id="gradeBadge" class="grade-badge">-</div>
-                <p id="summary" class="summary"></p>
-                <div class="priorities">
-                    <h4>Top Priorities</h4>
-                    <ol id="priorityList" class="priority-list"></ol>
-                </div>
+                <div id="gradeBadge" class="grade-chip">—</div>
+            </div>
+
+            <p id="summary" class="summary-text"></p>
+
+            <div class="section">
+                <p class="section-label">Top priorities</p>
+                <ol id="priorityList" class="priority-list"></ol>
             </div>
         </div>
 
-        <!-- Architecture Graph Panel -->
+        <!-- Architecture Panel -->
         <div id="architecturePanel" class="panel hidden">
-            <div class="architecture-container">
-                <div class="graph-controls">
-                    <div class="view-toggle">
-                        <button id="networkView" class="view-button">🌐 Network</button>
-                        <button id="treeView" class="view-button active">🌳 Tree</button>
+            <div class="arch-wrap">
+                <div class="arch-toolbar">
+                    <div class="btn-group">
+                        <button id="networkView" class="btn-seg">Network</button>
+                        <button id="treeView"    class="btn-seg active">Tree</button>
                     </div>
-                    <button id="zoomIn" class="control-button">🔍+</button>
-                    <button id="zoomOut" class="control-button">🔍-</button>
-                    <button id="resetZoom" class="control-button">⟲</button>
-                    <div class="depth-control" id="depthControl">
-                        <label for="depthSlider">Depth:</label>
+                    <div class="btn-group">
+                        <button id="zoomIn"    class="btn-icon">+</button>
+                        <button id="zoomOut"   class="btn-icon">−</button>
+                        <button id="resetZoom" class="btn-icon">⟲</button>
+                    </div>
+                    <div class="depth-row" id="depthControl">
+                        <span class="section-label">Depth</span>
                         <input type="range" id="depthSlider" min="1" max="5" value="1" step="1">
-                        <span id="depthValue">1</span>
+                        <span id="depthValue" class="depth-val">1</span>
                     </div>
                 </div>
-                <div id="graphContainer" class="graph-container"></div>
-                <div id="nodeTooltip" class="node-tooltip hidden"></div>
+                <div id="graphContainer" class="graph-canvas"></div>
+                <div id="nodeTooltip" class="tooltip hidden"></div>
             </div>
         </div>
 
         <!-- Code Review Panel -->
         <div id="reviewPanel" class="panel hidden">
-            <div class="review-container">
-                <div class="filter-bar">
-                    <button class="filter-button active" data-filter="all">All</button>
-                    <button class="filter-button" data-filter="high">High+</button>
-                    <button class="filter-button" data-filter="critical">Critical</button>
-                </div>
-                <div id="findingsList" class="findings-list"></div>
-                <div id="emptyReview" class="empty-state hidden">
-                    <p>🎉 No code review issues found!</p>
-                </div>
+            <div class="filter-row">
+                <button class="btn-filter active" data-filter="all">All</button>
+                <button class="btn-filter" data-filter="high">High+</button>
+                <button class="btn-filter" data-filter="critical">Critical</button>
             </div>
+            <div id="findingsList" class="findings-list"></div>
+            <div id="emptyReview" class="empty hidden">No issues found</div>
         </div>
 
-        <!-- Documentation Panel -->
+        <!-- Docs Panel -->
         <div id="docsPanel" class="panel hidden">
-            <div class="docs-container">
-                <div class="docs-tabs">
-                    <button class="docs-tab active" data-tab="docs">Documentation</button>
-                    <button class="docs-tab" data-tab="tests">Test Stubs</button>
-                </div>
-                <div id="docsContent" class="docs-content"></div>
-                <div id="testsContent" class="docs-content hidden"></div>
+            <div class="tab2-bar">
+                <button class="tab2 active" data-tab="docs">Docs</button>
+                <button class="tab2" data-tab="tests">Tests</button>
             </div>
+            <div id="docsContent"  class="doc-list"></div>
+            <div id="testsContent" class="doc-list hidden"></div>
         </div>
 
         <!-- Security Panel -->
         <div id="securityPanel" class="panel hidden">
-            <div class="security-container">
-                <div class="security-section">
-                    <h3>🔒 Security Issues</h3>
-                    <div id="securityIssues" class="security-list"></div>
-                    <div id="emptySecurityIssues" class="empty-state hidden">
-                        <p>🎉 No security issues found!</p>
-                    </div>
-                </div>
-                <div class="security-section">
-                    <h3>⚡ Modernization Opportunities</h3>
-                    <div id="modernizationList" class="security-list"></div>
-                </div>
-            </div>
+            <div class="section-label row-label">Security issues</div>
+            <div id="securityIssues" class="issue-list"></div>
+            <div id="emptySecurityIssues" class="empty hidden">No security issues found</div>
+
+            <div class="section-label row-label" style="margin-top:16px">Modernization</div>
+            <div id="modernizationList" class="issue-list"></div>
         </div>
+
     </main>
 
-    <!-- Load D3.js for architecture graph -->
     <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
-    
-    <!-- Main JavaScript -->
-    
-
-    
-    
-    
-    
-    
-    
-    
-    
-    
-
     <script src="main.js"></script>
 </body>
 </html>

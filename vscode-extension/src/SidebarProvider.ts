@@ -155,6 +155,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         this._analyzeWorkspace(force);
     }
 
+    public openFullView() {
+        this._openEditorPanel();
+    }
+
     public resolveWebviewView(webviewView: vscode.WebviewView) {
         this._view = webviewView;
 
@@ -169,7 +173,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         webviewView.webview.onDidReceiveMessage(async (data: { type: string }) => {
             switch (data.type) {
                 case 'ready': {
-                    // Webview is loaded — safe to send messages now
                     const currentPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
                     if (currentPath && this._cachedWorkspacePath === currentPath && this._cachedResult) {
                         this._handleResult(this._cachedResult);
@@ -184,12 +187,39 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 case 'retry':
                     await this._analyzeWorkspace(true);
                     break;
+                case 'openFullView':
+                    this._openEditorPanel();
+                    break;
             }
         });
     }
 
     public revive(panel: vscode.WebviewView) {
         this._view = panel;
+    }
+
+    private _openEditorPanel() {
+        if (!this._cachedResult) { return; }
+
+        const panel = vscode.window.createWebviewPanel(
+            'reposenseFullView',
+            'RepoSense — Full Report',
+            vscode.ViewColumn.One,
+            {
+                enableScripts: true,
+                localResourceRoots: [this._extensionUri],
+                retainContextWhenHidden: true
+            }
+        );
+
+        panel.webview.html = this._getHtmlForWebview(panel.webview);
+
+        const result = this._cachedResult;
+        panel.webview.onDidReceiveMessage((data: { type: string }) => {
+            if (data.type === 'ready') {
+                panel.webview.postMessage({ type: 'results', data: result });
+            }
+        });
     }
 
     private async _analyzeWorkspace(force: boolean = false) {

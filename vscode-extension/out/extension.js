@@ -46,9 +46,9 @@ function activate(context) {
     context.subscriptions.push(vscode.commands.registerCommand('reposense.refresh', () => {
         sidebarProvider.triggerAnalysis(true);
     }));
-    // Register open in browser command
+    // Open full report in editor tab
     context.subscriptions.push(vscode.commands.registerCommand('reposense.openInBrowser', () => {
-        vscode.window.showInformationMessage('RepoSense: Full web report view coming soon!');
+        sidebarProvider.openFullView();
     }));
     // Listen to workspace folder changes — always force fresh analysis
     context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {

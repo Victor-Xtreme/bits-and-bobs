@@ -44,6 +44,9 @@ class SidebarProvider {
     triggerAnalysis(force = false) {
         this._analyzeWorkspace(force);
     }
+    openFullView() {
+        this._openEditorPanel();
+    }
     resolveWebviewView(webviewView) {
         this._view = webviewView;
         webviewView.webview.options = {
@@ -55,7 +58,6 @@ class SidebarProvider {
         webviewView.webview.onDidReceiveMessage(async (data) => {
             switch (data.type) {
                 case 'ready': {
-                    // Webview is loaded — safe to send messages now
                     const currentPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
                     if (currentPath && this._cachedWorkspacePath === currentPath && this._cachedResult) {
                         this._handleResult(this._cachedResult);
@@ -72,11 +74,31 @@ class SidebarProvider {
                 case 'retry':
                     await this._analyzeWorkspace(true);
                     break;
+                case 'openFullView':
+                    this._openEditorPanel();
+                    break;
             }
         });
     }
     revive(panel) {
         this._view = panel;
+    }
+    _openEditorPanel() {
+        if (!this._cachedResult) {
+            return;
+        }
+        const panel = vscode.window.createWebviewPanel('reposenseFullView', 'RepoSense — Full Report', vscode.ViewColumn.One, {
+            enableScripts: true,
+            localResourceRoots: [this._extensionUri],
+            retainContextWhenHidden: true
+        });
+        panel.webview.html = this._getHtmlForWebview(panel.webview);
+        const result = this._cachedResult;
+        panel.webview.onDidReceiveMessage((data) => {
+            if (data.type === 'ready') {
+                panel.webview.postMessage({ type: 'results', data: result });
+            }
+        });
     }
     async _analyzeWorkspace(force = false) {
         const workspaceFolders = vscode.workspace.workspaceFolders;

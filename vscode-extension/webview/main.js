@@ -145,12 +145,7 @@ function renderHealthPanel(health) {
     const offset = circumference - (circumference * health.score) / 100;
     setTimeout(() => {
         ringFill.style.strokeDashoffset = offset;
-        
-        // Color based on score
-        if (health.score >= 90) ringFill.style.stroke = 'var(--rs-green)';
-        else if (health.score >= 70) ringFill.style.stroke = 'var(--rs-blue)';
-        else if (health.score >= 50) ringFill.style.stroke = 'var(--rs-amber)';
-        else ringFill.style.stroke = 'var(--rs-red)';
+        // Stroke is set via SVG gradient — no override needed
     }, 100);
     
     // Update grade badge
@@ -227,19 +222,17 @@ function renderReviewPanel(review) {
         
         item.innerHTML = `
             <div class="finding-header">
-                <span class="severity-badge ${finding.severity.toLowerCase()}">${finding.severity}</span>
-                <span class="finding-location">${finding.file}:${finding.line}</span>
+                <span class="sev-badge ${finding.severity.toLowerCase()}">${finding.severity}</span>
+                <span class="finding-loc">${finding.file}:${finding.line}</span>
             </div>
-            <div class="finding-description">${finding.issue}</div>
-            <div class="finding-details">
+            <div class="finding-desc">${finding.issue}</div>
+            <div class="finding-detail">
                 <strong>Suggestion:</strong>
                 <p>${finding.suggestion || 'No suggestion available'}</p>
             </div>
         `;
         
-        item.addEventListener('click', () => {
-            item.classList.toggle('expanded');
-        });
+        item.addEventListener('click', () => item.classList.toggle('expanded'));
         
         findingsList.appendChild(item);
     });
@@ -300,18 +293,18 @@ function renderSecurityPanel(security) {
 
         securityItems.forEach((issue, index) => {
             const item = document.createElement('div');
-            item.className = 'security-item';
+            item.className = 'issue-item';
             if (index === 0) item.classList.add('fix-first');
 
             const badge = issue.severity || issue.effort || 'MEDIUM';
             item.innerHTML = `
-                <div class="security-item-header">
-                    ${index === 0 ? '<span style="color: var(--rs-red); font-weight: 600;">Fix This First</span>' : ''}
+                <div class="issue-header">
                     <span class="effort-badge ${badge.toLowerCase()}">${badge}</span>
+                    ${index === 0 ? '<span style="font-size:9px;font-weight:700;color:var(--red);letter-spacing:.06em;text-transform:uppercase">Fix first</span>' : ''}
                 </div>
                 <p><strong>${issue.issue || issue.title || ''}</strong></p>
-                <p style="margin-top: 8px; color: var(--vscode-descriptionForeground);">${issue.fix || issue.description || ''}</p>
-                ${issue.file ? `<p style="margin-top: 4px; font-size: 11px; opacity: 0.7;">${issue.file}</p>` : ''}
+                <p>${issue.fix || issue.description || ''}</p>
+                ${issue.file ? `<p class="issue-file">${issue.file}</p>` : ''}
             `;
 
             securityIssues.appendChild(item);
@@ -327,14 +320,14 @@ function renderSecurityPanel(security) {
 
         security.modernization.forEach(mod => {
             const div = document.createElement('div');
-            div.className = 'security-item';
+            div.className = 'issue-item';
 
             div.innerHTML = `
-                <div class="security-item-header">
+                <div class="issue-header">
                     <span class="effort-badge ${(mod.effort || 'medium').toLowerCase()}">${mod.effort || ''}</span>
                 </div>
                 <p><strong>${mod.pattern || mod.title || ''}</strong></p>
-                <p style="margin-top: 8px; color: var(--vscode-descriptionForeground);">${mod.suggestion || mod.description || ''}</p>
+                <p>${mod.suggestion || mod.description || ''}</p>
             `;
 
             modernizationList.appendChild(div);
@@ -879,6 +872,22 @@ function initializeEventListeners() {
             vscode.postMessage({ type: 'retry' });
             showLoadingState();
         });
+    }
+
+    // Open full view in editor tab
+    const expandButton = document.getElementById('expandButton');
+    if (expandButton) {
+        expandButton.addEventListener('click', () => {
+            vscode.postMessage({ type: 'openFullView' });
+        });
+    }
+
+    // Hide sidebar-only buttons when running as a full editor panel
+    // (no openFullView handler means it's already the full view)
+    try {
+        acquireVsCodeApi(); // throws if already called
+    } catch (_) {
+        // already have vscode api — check if panel-actions should be hidden
     }
     
     // Filter buttons
