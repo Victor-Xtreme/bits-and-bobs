@@ -22,4 +22,5 @@ COPY .env* ./
 EXPOSE 8000
 
 # Run the app (Render sets PORT, defaults to 8000)
-CMD ["sh", "-c", "gunicorn -k uvicorn.workers.UvicornWorker src.main:app --bind 0.0.0.0:${PORT:-8000} --workers 4"]
+# Use a single worker because job state is stored in memory.
+CMD ["sh", "-c", "gunicorn -k uvicorn.workers.UvicornWorker src.main:app --bind 0.0.0.0:${PORT:-8000} --workers 1"]
