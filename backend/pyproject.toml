@@ -1,0 +1,11 @@
+[tool.basedpyright]
+pythonVersion = "3.12"
+pythonPlatform = "Windows"
+typeCheckingMode = "basic"
+reportMissingModuleSource = "warning"
+
+[tool.pyright]
+pythonVersion = "3.12"
+pythonPlatform = "Windows"
+typeCheckingMode = "basic"
+reportMissingModuleSource = "warning"
