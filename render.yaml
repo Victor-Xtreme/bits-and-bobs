@@ -2,5 +2,6 @@ services:
   - type: web
     name: reposense-backend
     env: docker
-    dockerfilePath: ./backend/Dockerfile
+    root: backend
+    dockerfilePath: ./Dockerfile
     envVars: []
