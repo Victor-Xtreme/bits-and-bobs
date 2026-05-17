@@ -80,10 +80,12 @@ class SidebarProvider {
         const workspacePath = workspaceFolders[0].uri.fsPath;
         try {
             // Send initial status
-            this._view.webview.postMessage({
-                type: 'loading',
-                step: 'Starting analysis...'
-            });
+            if (this._view) {
+                this._view.webview.postMessage({
+                    type: 'loading',
+                    step: 'Starting analysis...'
+                });
+            }
             // Update status bar to analyzing
             this._statusBarItem.text = '$(sync~spin) RepoSense: Analyzing...';
             // Send initial status to webview if available
@@ -168,6 +170,7 @@ class SidebarProvider {
                 this._view.webview.postMessage({
                     type: 'results',
                     data: result
+                });
                 // Update status bar with score
                 this._statusBarItem.text = `$(graph) RepoSense: Score ${result.score.score}/100`;
                 // Show completion notification
