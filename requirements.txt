@@ -2,15 +2,15 @@
 fastapi==0.104.1
 uvicorn[standard]==0.47.0
 pydantic==2.13.4
-pydantic-settings==2.14.1
+pydantic-settings
 # IBM WatsonX AI
 ibm-watsonx-ai
 
 # HTTP Client
-httpx==0.27.0
+httpx
 
 # Environment Variables
-python-dotenv==1.2.2
+python-dotenv
 
 # Async Support
-asyncio==4.0.0
+asyncio
