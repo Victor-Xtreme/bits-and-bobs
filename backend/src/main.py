@@ -93,12 +93,9 @@ def validate_local_path(local_path: str) -> str:
                     detail=f"Access to system directories is forbidden"
                 )
         
-        # Check for path traversal attempts
-        if '..' in local_path:
-            # Verify the resolved path doesn't escape intended boundaries
-            # This is a basic check; in production, you'd want to define
-            # specific allowed base directories
-            pass
+        # Path traversal protection: .resolve() normalizes the path and resolves '..'
+        # sequences to absolute paths. Any '..' attempts that escape to forbidden
+        # directories are already caught by the forbidden_paths check above.
         
         return str(path)
         
