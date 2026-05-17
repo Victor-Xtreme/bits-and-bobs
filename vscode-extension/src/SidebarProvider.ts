@@ -1,6 +1,11 @@
 import * as vscode from 'vscode';
 import fetch from 'node-fetch';
 import { getConfig } from './config';
+import * as fs from 'fs';
+import * as path from 'path';
+
+// USE_MOCK flag - set to true to use mock data instead of real API
+const USE_MOCK = true;
 
 // Backend API Models (matching models.py)
 type PayloadType = 'request' | 'result' | 'error';
@@ -167,15 +172,209 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         webviewView.webview.onDidReceiveMessage(async (data: { type: string }) => {
             switch (data.type) {
                 case 'analyzeWorkspace':
+                case 'retry':
                     await this._analyzeWorkspace();
                     break;
             }
         });
+
+        // Auto-start analysis when USE_MOCK is true
+        if (USE_MOCK) {
+            setTimeout(() => {
+                this._analyzeWorkspace();
+            }, 100);
+        }
     }
 
     public revive(panel: vscode.WebviewView) {
         this._view = panel;
     }
+    private _generateMockData(): AnalysisResult {
+        return {
+            score: {
+                score: 74,
+                grade: 'B',
+                breakdown: {
+                    quality: 72,
+                    security: 68,
+                    documentation: 75,
+                    architecture: 81
+                },
+                summary: 'Codebase is moderately healthy with some areas for improvement',
+                top_priorities: [
+                    'Add input validation',
+                    'Document 12 functions',
+                    'Update Werkzeug imports'
+                ]
+            },
+            architecture: {
+                nodes: [
+                    { id: 'main.py', label: 'main.py', type: 'entry', description: 'Main application entry point' },
+                    { id: 'config.py', label: 'config.py', type: 'config', description: 'Configuration module' },
+                    { id: 'parser.py', label: 'parser.py', type: 'service', description: 'Code parser service' },
+                    { id: 'orchestrate.py', label: 'orchestrate.py', type: 'service', description: 'Agent orchestration' },
+                    { id: 'watsonx.py', label: 'watsonx.py', type: 'service', description: 'WatsonX integration' },
+                    { id: 'utils/logger.py', label: 'logger.py', type: 'util', description: 'Logging utilities' }
+                ],
+                edges: [
+                    { source: 'main.py', target: 'config.py', relationship: 'imports' },
+                    { source: 'main.py', target: 'orchestrate.py', relationship: 'calls' },
+                    { source: 'orchestrate.py', target: 'parser.py', relationship: 'calls' },
+                    { source: 'orchestrate.py', target: 'watsonx.py', relationship: 'calls' },
+                    { source: 'parser.py', target: 'utils/logger.py', relationship: 'imports' }
+                ]
+            },
+            review: {
+                findings: [
+                    {
+                        file: 'src/main.py',
+                        line: 45,
+                        severity: 'HIGH',
+                        issue: 'Missing input validation for user-provided path',
+                        suggestion: 'Add path validation to prevent directory traversal attacks'
+                    },
+                    {
+                        file: 'src/parser.py',
+                        line: 123,
+                        severity: 'MEDIUM',
+                        issue: 'Exception handling too broad',
+                        suggestion: 'Catch specific exceptions instead of bare except'
+                    },
+                    {
+                        file: 'src/watsonx.py',
+                        line: 67,
+                        severity: 'LOW',
+                        issue: 'Magic number used without explanation',
+                        suggestion: 'Extract magic number to named constant'
+                    }
+                ]
+            },
+            docs: {
+                docs: [
+                    {
+                        function_name: 'parse_file',
+                        description: 'Parses a Python file and extracts its AST structure',
+                        params: [
+                            { name: 'file_path', type: 'str', description: 'Path to the file to parse' },
+                            { name: 'encoding', type: 'str', description: 'File encoding (default: utf-8)' }
+                        ],
+                        returns: 'Dict containing parsed AST nodes and metadata',
+                        example: 'result = parse_file("main.py", encoding="utf-8")'
+                    },
+                    {
+                        function_name: 'analyze_dependencies',
+                        description: 'Analyzes import dependencies in the codebase',
+                        params: [
+                            { name: 'root_path', type: 'str', description: 'Root directory to analyze' }
+                        ],
+                        returns: 'Graph of dependencies between modules',
+                        example: 'deps = analyze_dependencies("/path/to/project")'
+                    }
+                ],
+                tests: [
+                    {
+                        function_name: 'parse_file',
+                        test_cases: [
+                            {
+                                description: 'Should parse valid Python file',
+                                input: 'valid_file.py',
+                                expected: 'AST with function definitions'
+                            },
+                            {
+                                description: 'Should handle syntax errors gracefully',
+                                input: 'invalid_syntax.py',
+                                expected: 'Error with line number'
+                            }
+                        ]
+                    }
+                ]
+            },
+            security: {
+                security: [
+                    {
+                        issue: 'Deprecated Werkzeug imports detected',
+                        severity: 'MEDIUM',
+                        file: 'src/main.py',
+                        fix: 'Update to use werkzeug.security instead of werkzeug.contrib'
+                    },
+                    {
+                        issue: 'Hardcoded credentials in configuration',
+                        severity: 'CRITICAL',
+                        file: 'src/config.py',
+                        fix: 'Move credentials to environment variables'
+                    }
+                ],
+                modernization: [
+                    {
+                        pattern: 'Using % string formatting',
+                        suggestion: 'Migrate to f-strings for better readability',
+                        effort: 'LOW'
+                    },
+                    {
+                        pattern: 'Type hints missing on 15 functions',
+                        suggestion: 'Add type hints for better IDE support',
+                        effort: 'MEDIUM'
+                    }
+                ]
+            }
+        };
+    }
+
+    private async _simulateMockProgress() {
+        const steps = [
+            'Reading workspace files',
+            'Parsing code structure',
+            'Architect agent running',
+            'Architect agent complete',
+            'Reviewer agent complete',
+            'Documenter agent complete',
+            'Hardener agent complete'
+        ];
+
+        for (let i = 0; i < steps.length; i++) {
+            if (this._view) {
+                this._view.webview.postMessage({
+                    type: 'loading',
+                    step: steps[i]
+                });
+
+                this._view.webview.postMessage({
+                    type: 'progress',
+                    data: {
+                        percentage: ((i + 1) / steps.length) * 100,
+                        step: steps[i]
+                    }
+                });
+            }
+
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+
+        const mockData = this._generateMockData();
+        if (this._view) {
+            this._view.webview.postMessage({
+                type: 'results',
+                data: {
+                    health: {
+                        score: mockData.score.score,
+                        grade: mockData.score.grade,
+                        summary: mockData.score.summary,
+                        priorities: mockData.score.top_priorities
+                    },
+                    architecture: mockData.architecture,
+                    review: mockData.review,
+                    documentation: mockData.docs,
+                    security: {
+                        issues: mockData.security.security,
+                        modernization: mockData.security.modernization
+                    }
+                }
+            });
+        }
+
+        this._statusBarItem.text = `$(graph) RepoSense: Score ${mockData.score.score}/100`;
+    }
+
 
     private async _analyzeWorkspace() {
         // Get workspace folder path
@@ -193,6 +392,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
         const workspacePath = workspaceFolders[0].uri.fsPath;
 
+        // Check if USE_MOCK is enabled
+        if (USE_MOCK) {
+            this._statusBarItem.text = '$(sync~spin) RepoSense: Analyzing...';
+            await this._simulateMockProgress();
+            return;
+        }
+
         try {
             // Update status bar to analyzing
             this._statusBarItem.text = '$(sync~spin) RepoSense: Analyzing...';
@@ -200,8 +406,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             // Send initial status to webview if available
             if (this._view) {
                 this._view.webview.postMessage({
-                    type: 'status',
-                    message: 'Starting analysis...'
+                    type: 'loading',
+                    step: 'Starting analysis...'
                 });
             }
 
@@ -371,195 +577,42 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             return;
         }
 
-        const progressLines: string[] = [];
-        
-        for (const step of steps) {
-            let icon = '';
-            switch (step.status) {
-                case 'done':
-                    icon = '✓';
-                    break;
-                case 'active':
-                    icon = '⟳';
-                    break;
-                case 'pending':
-                    icon = '○';
-                    break;
-            }
-
-            let line = `${icon} ${step.name}`;
-            
-            if (step.files_processed !== undefined && step.files_total !== undefined) {
-                line += ` (${step.files_processed}/${step.files_total})`;
-            }
-            
-            if (step.current_file) {
-                line += `\n  → ${step.current_file}`;
-            }
-            
-            progressLines.push(line);
+        // Send progress data to webview
+        if (this._view) {
+            this._view.webview.postMessage({
+                type: 'progress',
+                data: steps
+            });
         }
-
-        this._view.webview.postMessage({
-            type: 'progress',
-            message: progressLines.join('\n')
-        });
     }
 
     private _getHtmlForWebview(webview: vscode.Webview) {
+        // Read the webview HTML file
+        const htmlPath = vscode.Uri.joinPath(this._extensionUri, 'webview', 'main.html');
+        const cssPath = vscode.Uri.joinPath(this._extensionUri, 'webview', 'styles.css');
+        const jsPath = vscode.Uri.joinPath(this._extensionUri, 'webview', 'main.js');
+
+        // Convert to webview URIs
+        const cssUri = webview.asWebviewUri(cssPath);
+        const jsUri = webview.asWebviewUri(jsPath);
+
+        let html = fs.readFileSync(htmlPath.fsPath, 'utf8');
+
+        // Replace relative paths with webview URIs
+        html = html.replace('href="styles.css"', `href="${cssUri}"`);
+        html = html.replace('src="main.js"', `src="${jsUri}"`);
+
+        // Update CSP to allow the webview resources
         const nonce = this._getNonce();
+        html = html.replace(
+            /<meta http-equiv="Content-Security-Policy"[^>]*>/,
+            `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline' https://cdn.jsdelivr.net; script-src 'nonce-${nonce}' https://cdn.jsdelivr.net; img-src ${webview.cspSource} https: data:; connect-src https:;">`
+        );
 
-        return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
-    <title>RepoSense</title>
-    <style>
-        body {
-            padding: 20px;
-            color: var(--vscode-foreground);
-            font-family: var(--vscode-font-family);
-            font-size: var(--vscode-font-size);
-        }
-        h1 {
-            font-size: 1.5em;
-            margin-bottom: 20px;
-        }
-        button {
-            background-color: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
-            border: none;
-            padding: 10px 20px;
-            font-size: 14px;
-            cursor: pointer;
-            border-radius: 2px;
-            width: 100%;
-            margin-bottom: 20px;
-        }
-        button:hover {
-            background-color: var(--vscode-button-hoverBackground);
-        }
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        #status {
-            margin-top: 20px;
-            padding: 15px;
-            background-color: var(--vscode-editor-background);
-            border-radius: 4px;
-            white-space: pre-line;
-            line-height: 1.6;
-        }
-        .health-score {
-            font-size: 2em;
-            font-weight: bold;
-            color: var(--vscode-charts-green);
-            margin: 20px 0;
-        }
-        .error {
-            color: var(--vscode-errorForeground);
-        }
-        .progress {
-            color: var(--vscode-charts-blue);
-        }
-    </style>
-</head>
-<body>
-    <h1>RepoSense</h1>
-    <button id="analyzeBtn">Analyze Workspace</button>
-    <div id="status"></div>
+        // Add nonce to script tags
+        html = html.replace(/<script/g, `<script nonce="${nonce}"`);
 
-    <script nonce="${nonce}">
-        const vscode = acquireVsCodeApi();
-        const analyzeBtn = document.getElementById('analyzeBtn');
-        const statusDiv = document.getElementById('status');
-
-        analyzeBtn.addEventListener('click', () => {
-            analyzeBtn.disabled = true;
-            statusDiv.innerHTML = '';
-            vscode.postMessage({ type: 'analyzeWorkspace' });
-        });
-
-        window.addEventListener('message', event => {
-            const message = event.data;
-            
-            switch (message.type) {
-                case 'status':
-                    statusDiv.innerHTML = '<div class="progress">' + message.message + '</div>';
-                    break;
-                
-                case 'progress':
-                    statusDiv.innerHTML = '<div class="progress">' + message.message + '</div>';
-                    break;
-                
-                case 'complete':
-                    analyzeBtn.disabled = false;
-                    let resultHtml = '<div>✓ Analysis Complete!</div>';
-                    resultHtml += '<div class="health-score">Score: ' + message.healthScore + ' (Grade: ' + message.grade + ')</div>';
-                    
-                    if (message.result) {
-                        const result = message.result;
-                        
-                        // Show breakdown
-                        if (result.score && result.score.breakdown) {
-                            resultHtml += '<div style="margin-top: 15px;"><strong>Breakdown:</strong></div>';
-                            resultHtml += '<div style="margin-left: 10px;">';
-                            resultHtml += '• Quality: ' + result.score.breakdown.quality + '<br>';
-                            resultHtml += '• Security: ' + result.score.breakdown.security + '<br>';
-                            resultHtml += '• Documentation: ' + result.score.breakdown.documentation + '<br>';
-                            resultHtml += '• Architecture: ' + result.score.breakdown.architecture;
-                            resultHtml += '</div>';
-                        }
-                        
-                        // Show top priorities
-                        if (result.score && result.score.top_priorities && result.score.top_priorities.length > 0) {
-                            resultHtml += '<div style="margin-top: 15px;"><strong>Top Priorities:</strong></div>';
-                            resultHtml += '<div style="margin-left: 10px;">';
-                            result.score.top_priorities.forEach((priority, idx) => {
-                                resultHtml += (idx + 1) + '. ' + priority + '<br>';
-                            });
-                            resultHtml += '</div>';
-                        }
-                        
-                        // Show summary
-                        if (result.score && result.score.summary) {
-                            resultHtml += '<div style="margin-top: 15px;"><strong>Summary:</strong></div>';
-                            resultHtml += '<div style="margin-left: 10px;">' + result.score.summary + '</div>';
-                        }
-                        
-                        // Show counts
-                        resultHtml += '<div style="margin-top: 15px;"><strong>Analysis Details:</strong></div>';
-                        resultHtml += '<div style="margin-left: 10px;">';
-                        if (result.review && result.review.findings) {
-                            resultHtml += '• Code Review Findings: ' + result.review.findings.length + '<br>';
-                        }
-                        if (result.security && result.security.security) {
-                            resultHtml += '• Security Issues: ' + result.security.security.length + '<br>';
-                        }
-                        if (result.security && result.security.modernization) {
-                            resultHtml += '• Modernization Items: ' + result.security.modernization.length + '<br>';
-                        }
-                        if (result.architecture && result.architecture.nodes) {
-                            resultHtml += '• Architecture Nodes: ' + result.architecture.nodes.length + '<br>';
-                        }
-                        resultHtml += '</div>';
-                    }
-                    
-                    statusDiv.innerHTML = resultHtml;
-                    break;
-                
-                case 'error':
-                    analyzeBtn.disabled = false;
-                    statusDiv.innerHTML = '<div class="error">Error: ' + message.message + '</div>';
-                    break;
-            }
-        });
-    </script>
-</body>
-</html>`;
+        return html;
     }
 
     private _getNonce() {
