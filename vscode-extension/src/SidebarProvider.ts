@@ -174,7 +174,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             switch (data.type) {
                 case 'ready': {
                     const status = await this._checkBackendConfig();
-                    if (status === 'not_configured') {
+                    // If the backend is not configured or unavailable, show setup/dashboard
+                    if (status !== 'configured') {
                         webviewView.webview.postMessage({ type: 'setup' });
                         return;
                     }
@@ -331,6 +332,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
             if (!response.ok) {
                 const errorText = await response.text();
+                // Provide more actionable error for 404s (likely wrong backend URL or missing endpoint)
+                if (response.status === 404) {
+                    throw new Error(`HTTP 404: Endpoint not found. Check that the backend URL is correct and the server exposes /analyze.`);
+                }
                 throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
             }
 
