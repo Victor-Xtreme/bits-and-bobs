@@ -757,9 +757,14 @@ function renderNetworkGraph(architecture) {
         test: '#6b7280'
     };
     
-    // Deep copy nodes and edges to avoid mutating currentArchitecture
+    // Deep copy nodes to avoid mutating currentArchitecture
     const graphNodes = architecture.nodes.map(n => ({...n}));
-    const graphEdges = architecture.edges.map(e => ({...e}));
+    
+    // Filter out edges that reference non-existent nodes, then deep copy
+    const nodeIds = new Set(graphNodes.map(n => n.id));
+    const graphEdges = architecture.edges
+        .filter(e => nodeIds.has(e.source) && nodeIds.has(e.target))
+        .map(e => ({...e}));
     
     // Create force simulation
     graphSimulation = d3.forceSimulation(graphNodes)
@@ -768,6 +773,21 @@ function renderNetworkGraph(architecture) {
         .force('center', d3.forceCenter(width / 2, height / 2))
         .force('collision', d3.forceCollide().radius(30));
     
+    // Create arrow markers for edges
+    svg.append('defs').selectAll('marker')
+        .data(['arrow'])
+        .join('marker')
+        .attr('id', 'arrow')
+        .attr('viewBox', '0 -5 10 10')
+        .attr('refX', 22)
+        .attr('refY', 0)
+        .attr('markerWidth', 6)
+        .attr('markerHeight', 6)
+        .attr('orient', 'auto')
+        .append('path')
+        .attr('d', 'M0,-5L10,0L0,5')
+        .attr('fill', '#6b7280');
+
     // Create links
     const link = g.append('g')
         .selectAll('line')
@@ -775,7 +795,8 @@ function renderNetworkGraph(architecture) {
         .join('line')
         .attr('stroke', '#6b7280')
         .attr('stroke-opacity', 0.6)
-        .attr('stroke-width', 2);
+        .attr('stroke-width', 2)
+        .attr('marker-end', 'url(#arrow)');
     
     // Create nodes
     const node = g.append('g')

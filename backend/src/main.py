@@ -350,7 +350,9 @@ async def config_setup(body: ConfigSetupRequest):
         encoding="utf-8"
     )
 
-    config_module.settings = config_module.Settings()
+    new_settings = config_module.Settings()
+    for k, v in new_settings.model_dump().items():
+        setattr(config_module.settings, k, v)
 
     missing = config_module.settings.missing_fields()
     return {
