@@ -5,6 +5,9 @@ Main entry point for the codebase analysis API
 
 import asyncio
 import os
+import shutil
+import subprocess
+import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
@@ -109,6 +112,59 @@ def validate_local_path(local_path: str) -> str:
         )
 
 
+def validate_repo_url(repo_url: str) -> str:
+    """Validate repository URL format for server-side clone analysis."""
+    normalized = (repo_url or "").strip()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="repo_url cannot be empty")
+
+    valid_prefixes = ("https://", "http://", "git@")
+    if not normalized.startswith(valid_prefixes):
+        raise HTTPException(
+            status_code=400,
+            detail="repo_url must start with https://, http://, or git@"
+        )
+
+    return normalized
+
+
+def clone_repo_to_temp(repo_url: str) -> tuple[str, str]:
+    """Clone repository to a temporary directory and return (repo_path, temp_root)."""
+    temp_root = tempfile.mkdtemp(prefix="reposense-")
+    repo_path = str(Path(temp_root) / "repo")
+
+    try:
+        subprocess.run(
+            ["git", "clone", "--depth", "1", repo_url, repo_path],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+    except FileNotFoundError as e:
+        shutil.rmtree(temp_root, ignore_errors=True)
+        raise HTTPException(status_code=500, detail="git is not available on the backend server") from e
+    except subprocess.TimeoutExpired as e:
+        shutil.rmtree(temp_root, ignore_errors=True)
+        raise HTTPException(status_code=408, detail="Timed out while cloning repository") from e
+    except subprocess.CalledProcessError as e:
+        shutil.rmtree(temp_root, ignore_errors=True)
+        stderr = (e.stderr or "").strip()
+        message = stderr[:300] if stderr else "Unknown git clone error"
+        raise HTTPException(status_code=400, detail=f"Failed to clone repository: {message}") from e
+
+    return repo_path, temp_root
+
+
+async def run_analysis_with_optional_cleanup(job_id: str, local_path: str, temp_root: Optional[str] = None) -> None:
+    """Run analysis and cleanup temporary clone directory when applicable."""
+    try:
+        await orchestrate_analysis(job_id=job_id, local_path=local_path)
+    finally:
+        if temp_root:
+            shutil.rmtree(temp_root, ignore_errors=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -171,8 +227,16 @@ async def analyze_codebase(
     Raises:
         HTTPException: If max concurrent jobs exceeded
     """
-    # Validate and sanitize the local path
-    validated_path = validate_local_path(request.local_path)
+    validated_path: Optional[str] = None
+    temp_clone_root: Optional[str] = None
+
+    if request.repo_url:
+        validated_repo_url = validate_repo_url(request.repo_url)
+        validated_path, temp_clone_root = clone_repo_to_temp(validated_repo_url)
+    elif request.local_path:
+        validated_path = validate_local_path(request.local_path)
+    else:
+        raise HTTPException(status_code=400, detail="Either local_path or repo_url is required")
     
     # Check concurrent job limit
     active_jobs = get_active_job_count()
@@ -192,9 +256,10 @@ async def analyze_codebase(
     
     # Start background analysis with validated path
     background_tasks.add_task(
-        orchestrate_analysis,
+        run_analysis_with_optional_cleanup,
         job_id=job_id,
-        local_path=validated_path
+        local_path=validated_path,
+        temp_root=temp_clone_root,
     )
     
     # Return immediate response with job_id and initial progress

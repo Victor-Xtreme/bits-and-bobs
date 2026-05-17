@@ -67,6 +67,11 @@
           "default": "http://localhost:8000",
           "description": "URL of the RepoSense backend API server"
         },
+        "reposense.remoteRepoUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Repository URL for remote backend analysis (for example, https://github.com/org/repo.git). Used when backendUrl is not localhost."
+        },
         "reposense.requestTimeoutMs": {
           "type": "number",
           "default": 30000,

@@ -5,7 +5,7 @@ AI-powered codebase health analysis tool for FastAPI backend
 
 from enum import Enum
 from typing import Optional, Union
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 # ============================================================================
@@ -87,8 +87,17 @@ class ErrorCode(str, Enum):
 # ============================================================================
 
 class AnalyzeRequest(BaseModel):
-    """Request to analyze a local codebase"""
-    local_path: str
+    """Request to analyze a local codebase path or remote repository URL."""
+    local_path: Optional[str] = None
+    repo_url: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_source(self) -> "AnalyzeRequest":
+        has_local = bool(self.local_path and self.local_path.strip())
+        has_repo = bool(self.repo_url and self.repo_url.strip())
+        if not has_local and not has_repo:
+            raise ValueError("Either local_path or repo_url must be provided")
+        return self
 
 
 # ============================================================================

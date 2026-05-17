@@ -3,6 +3,7 @@ import fetch from 'node-fetch';
 import { getConfig } from './config';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as cp from 'child_process';
 
 // Backend API Models (matching models.py)
 type PayloadType = 'request' | 'result' | 'error';
@@ -303,7 +304,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
         try {
             const config = getConfig();
-            this._ensureBackendCanAccessPath(config.backendUrl, analysisPath);
+            const analyzeRequestBody = await this._buildAnalyzeRequestBody(config.backendUrl, config.remoteRepoUrl, analysisPath);
 
             // Send initial status
             if (this._view) {
@@ -329,7 +330,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ local_path: analysisPath }),
+                body: JSON.stringify(analyzeRequestBody),
                 timeout: config.requestTimeoutMs
             });
 
@@ -399,24 +400,64 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         }
     }
 
-    private _ensureBackendCanAccessPath(backendUrl: string, analysisPath: string): void {
+    private async _buildAnalyzeRequestBody(
+        backendUrl: string,
+        configuredRemoteRepoUrl: string,
+        analysisPath: string
+    ): Promise<{ local_path?: string; repo_url?: string }> {
+        if (this._isLocalBackend(backendUrl)) {
+            return { local_path: analysisPath };
+        }
+
+        const explicitRepoUrl = configuredRemoteRepoUrl.trim();
+        if (explicitRepoUrl) {
+            return { repo_url: explicitRepoUrl };
+        }
+
+        const detectedRepoUrl = this._tryGetWorkspaceGitRemote(analysisPath);
+        if (detectedRepoUrl) {
+            return { repo_url: detectedRepoUrl };
+        }
+
+        throw new Error(
+            `Backend URL ${backendUrl} is remote. Set reposense.remoteRepoUrl to your Git repository URL ` +
+            '(for example, https://github.com/org/repo.git) so Render can clone and analyze it.'
+        );
+    }
+
+    private _tryGetWorkspaceGitRemote(analysisPath: string): string | null {
+        try {
+            const output = cp.execFileSync('git', ['-C', analysisPath, 'remote', 'get-url', 'origin'], {
+                encoding: 'utf8',
+                timeout: 5000,
+                stdio: ['ignore', 'pipe', 'ignore']
+            }).trim();
+
+            if (!output) {
+                return null;
+            }
+
+            return this._normalizeGitRemoteUrl(output);
+        } catch {
+            return null;
+        }
+    }
+
+    private _normalizeGitRemoteUrl(remoteUrl: string): string {
+        const trimmed = remoteUrl.trim();
+        const sshMatch = /^git@([^:]+):(.+)$/.exec(trimmed);
+        if (sshMatch) {
+            const host = sshMatch[1];
+            const repoPath = sshMatch[2];
+            return `https://${host}/${repoPath}`;
+        }
+
+        return trimmed;
+    }
+
+    private _isLocalBackend(backendUrl: string): boolean {
         const host = this._getBackendHost(backendUrl);
-        if (!host) {
-            return;
-        }
-
-        const isLocalBackend = host === 'localhost' || host === '127.0.0.1' || host === '::1';
-        if (isLocalBackend) {
-            return;
-        }
-
-        const isLikelyLocalFilesystemPath = path.isAbsolute(analysisPath);
-        if (isLikelyLocalFilesystemPath) {
-            throw new Error(
-                `Backend URL ${backendUrl} is remote and cannot access local path ${analysisPath}. ` +
-                'Set reposense.backendUrl to http://localhost:8000 (or run the backend where this path exists).'
-            );
-        }
+        return !!host && (host === 'localhost' || host === '127.0.0.1' || host === '::1');
     }
 
     private _getBackendHost(backendUrl: string): string | null {

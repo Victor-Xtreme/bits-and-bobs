@@ -29,6 +29,7 @@ function getConfig() {
     const config = vscode.workspace.getConfiguration('reposense');
     return {
         backendUrl: config.get('backendUrl', 'http://localhost:8000'),
+        remoteRepoUrl: config.get('remoteRepoUrl', ''),
         requestTimeoutMs: config.get('requestTimeoutMs', 30000),
         pollingIntervalMs: config.get('pollingIntervalMs', 2000),
     };
