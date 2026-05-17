@@ -840,3 +840,33 @@ table {
         padding: 10px;
     }
 }
+
+/* Responsive Graph Controls */
+@media screen and (max-width: 600px) {
+    .graph-controls {
+        position: relative; /* Flow normally instead of overlapping */
+        top: 0;
+        right: 0;
+        flex-wrap: wrap;
+        padding: 10px;
+        justify-content: center;
+        border-bottom: 1px solid var(--vscode-panel-border);
+        background-color: rgba(0, 0, 0, 0.2);
+    }
+    
+    .view-toggle {
+        margin-right: 0;
+        flex-wrap: wrap;
+    }
+    
+    .control-button {
+        flex: 1 1 auto;
+    }
+    
+    .depth-control {
+        margin-left: 0;
+        width: 100%;
+        justify-content: center;
+        margin-top: 5px;
+    }
+}
