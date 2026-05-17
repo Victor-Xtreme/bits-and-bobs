@@ -16,4 +16,4 @@ python-dotenv==1.2.2
 asyncio==4.0.0
 
 # Production WSGI server for Render
-gunicorn==22.1.0
+gunicorn==22.0.0
