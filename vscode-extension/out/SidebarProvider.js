@@ -31,10 +31,17 @@ const vscode = __importStar(require("vscode"));
 const node_fetch_1 = __importDefault(require("node-fetch"));
 const config_1 = require("./config");
 class SidebarProvider {
-    constructor(_extensionUri) {
+    constructor(_extensionUri, _statusBarItem) {
         this._extensionUri = _extensionUri;
+        this._statusBarItem = _statusBarItem;
         this._retryCount = 0;
         this._maxRetries = 3;
+    }
+    /**
+     * Public method to trigger analysis (called from extension.ts)
+     */
+    triggerAnalysis() {
+        this._analyzeWorkspace();
     }
     resolveWebviewView(webviewView) {
         this._view = webviewView;
@@ -56,25 +63,29 @@ class SidebarProvider {
         this._view = panel;
     }
     async _analyzeWorkspace() {
-        if (!this._view) {
-            return;
-        }
         // Get workspace folder path
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (!workspaceFolders || workspaceFolders.length === 0) {
-            this._view.webview.postMessage({
-                type: 'error',
-                message: 'No workspace folder open'
-            });
+            this._statusBarItem.text = '$(error) RepoSense: Error';
+            if (this._view) {
+                this._view.webview.postMessage({
+                    type: 'error',
+                    message: 'No workspace folder open'
+                });
+            }
             return;
         }
         const workspacePath = workspaceFolders[0].uri.fsPath;
         try {
-            // Send initial status
-            this._view.webview.postMessage({
-                type: 'status',
-                message: 'Starting analysis...'
-            });
+            // Update status bar to analyzing
+            this._statusBarItem.text = '$(sync~spin) RepoSense: Analyzing...';
+            // Send initial status to webview if available
+            if (this._view) {
+                this._view.webview.postMessage({
+                    type: 'status',
+                    message: 'Starting analysis...'
+                });
+            }
             const config = (0, config_1.getConfig)();
             // Send POST request to start analysis
             const response = await (0, node_fetch_1.default)(`${config.backendUrl}/analyze`, {
@@ -97,10 +108,13 @@ class SidebarProvider {
             this._startPolling(jobId);
         }
         catch (error) {
-            this._view.webview.postMessage({
-                type: 'error',
-                message: `Failed to start analysis: ${error instanceof Error ? error.message : String(error)}`
-            });
+            this._statusBarItem.text = '$(error) RepoSense: Error';
+            if (this._view) {
+                this._view.webview.postMessage({
+                    type: 'error',
+                    message: `Failed to start analysis: ${error instanceof Error ? error.message : String(error)}`
+                });
+            }
         }
     }
     _startPolling(jobId) {
@@ -144,14 +158,24 @@ class SidebarProvider {
                     clearInterval(this._pollingInterval);
                     this._pollingInterval = undefined;
                 }
-                // Send completion message with health score from payload.score.score
-                this._view.webview.postMessage({
-                    type: 'complete',
-                    healthScore: result.score.score,
-                    grade: result.score.grade,
-                    summary: result.score.summary,
-                    result: result
+                // Update status bar with score
+                this._statusBarItem.text = `$(graph) RepoSense: Score ${result.score.score}/100`;
+                // Show completion notification
+                vscode.window.showInformationMessage(`RepoSense: Analysis complete — Score ${result.score.score}/100`, 'View Details').then(selection => {
+                    if (selection === 'View Details') {
+                        vscode.commands.executeCommand('reposense-sidebar.focus');
+                    }
                 });
+                // Send completion message with health score from payload.score.score
+                if (this._view) {
+                    this._view.webview.postMessage({
+                        type: 'complete',
+                        healthScore: result.score.score,
+                        grade: result.score.grade,
+                        summary: result.score.summary,
+                        result: result
+                    });
+                }
             }
             else if (apiResponse.type === 'error' && apiResponse.payload) {
                 // Analysis failed
@@ -161,10 +185,14 @@ class SidebarProvider {
                     clearInterval(this._pollingInterval);
                     this._pollingInterval = undefined;
                 }
-                this._view.webview.postMessage({
-                    type: 'error',
-                    message: `${error.stage}: ${error.message} (${error.code})`
-                });
+                // Update status bar to error
+                this._statusBarItem.text = '$(error) RepoSense: Error';
+                if (this._view) {
+                    this._view.webview.postMessage({
+                        type: 'error',
+                        message: `${error.stage}: ${error.message} (${error.code})`
+                    });
+                }
             }
             // If type is 'request', continue polling (analysis still in progress)
         }
@@ -177,10 +205,14 @@ class SidebarProvider {
                     clearInterval(this._pollingInterval);
                     this._pollingInterval = undefined;
                 }
-                this._view.webview.postMessage({
-                    type: 'error',
-                    message: `Failed to check results after ${this._maxRetries} retries: ${error instanceof Error ? error.message : String(error)}`
-                });
+                // Update status bar to error
+                this._statusBarItem.text = '$(error) RepoSense: Error';
+                if (this._view) {
+                    this._view.webview.postMessage({
+                        type: 'error',
+                        message: `Failed to check results after ${this._maxRetries} retries: ${error instanceof Error ? error.message : String(error)}`
+                    });
+                }
             }
             // Otherwise, continue polling and retry
         }

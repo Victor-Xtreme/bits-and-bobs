@@ -28,11 +28,33 @@ const vscode = __importStar(require("vscode"));
 const SidebarProvider_1 = require("./SidebarProvider");
 function activate(context) {
     console.log('RepoSense extension is now active');
-    // Register the sidebar provider
-    const sidebarProvider = new SidebarProvider_1.SidebarProvider(context.extensionUri);
+    // Create status bar item (left side, priority 100)
+    const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+    statusBarItem.command = 'reposense.focusSidebar';
+    statusBarItem.text = '$(check) RepoSense: Ready';
+    statusBarItem.show();
+    // Register the sidebar provider with status bar item
+    const sidebarProvider = new SidebarProvider_1.SidebarProvider(context.extensionUri, statusBarItem);
     context.subscriptions.push(vscode.window.registerWebviewViewProvider('reposense-sidebar', sidebarProvider), 
     // Register the provider itself so dispose() gets called on deactivation
-    sidebarProvider);
+    sidebarProvider, statusBarItem);
+    // Register command to focus sidebar
+    context.subscriptions.push(vscode.commands.registerCommand('reposense.focusSidebar', () => {
+        vscode.commands.executeCommand('reposense-sidebar.focus');
+    }));
+    // Register refresh command
+    context.subscriptions.push(vscode.commands.registerCommand('reposense.refresh', () => {
+        sidebarProvider.triggerAnalysis();
+    }));
+    // Register open in browser command
+    context.subscriptions.push(vscode.commands.registerCommand('reposense.openInBrowser', () => {
+        vscode.window.showInformationMessage('RepoSense: Full web report view coming soon!');
+    }));
+    // Listen to workspace folder changes
+    context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
+        // Automatically re-run analysis when workspace folder changes
+        sidebarProvider.triggerAnalysis();
+    }));
 }
 exports.activate = activate;
 function deactivate() {
