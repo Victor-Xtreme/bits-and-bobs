@@ -54,6 +54,44 @@ MAX_MODERNIZATION_ITEMS = 5
 
 logger = logging.getLogger(__name__)
 
+def _safe_parse_severity(value: str) -> Severity:
+    """
+    Safely parse severity value, handling case variations.
+    
+    Args:
+        value: Severity string (may be any case)
+        
+    Returns:
+        Severity enum value
+    """
+    value_upper = value.strip().upper()
+    try:
+        return Severity(value_upper)
+    except ValueError:
+        # Fallback to MEDIUM if invalid
+        logger.warning(f"Invalid severity value '{value}', defaulting to MEDIUM")
+        return Severity.MEDIUM
+
+
+def _safe_parse_effort(value: str) -> Effort:
+    """
+    Safely parse effort value, handling case variations.
+    
+    Args:
+        value: Effort string (may be any case)
+        
+    Returns:
+        Effort enum value
+    """
+    value_upper = value.strip().upper()
+    try:
+        return Effort(value_upper)
+    except ValueError:
+        # Fallback to MEDIUM if invalid
+        logger.warning(f"Invalid effort value '{value}', defaulting to MEDIUM")
+        return Effort.MEDIUM
+
+
 
 def _get_watsonx_model():
     """
@@ -310,7 +348,7 @@ Return ONLY valid JSON, no additional text."""
         findings.append(CodeReviewFinding(
             file=finding_data["file"],
             line=finding_data["line"],
-            severity=Severity(finding_data["severity"]),
+            severity=_safe_parse_severity(finding_data["severity"]),
             issue=finding_data["issue"],
             suggestion=finding_data["suggestion"]
         ))
@@ -491,7 +529,7 @@ Return ONLY valid JSON, no additional text."""
     for issue_data in data.get("security", []):
         security.append(SecurityIssue(
             issue=issue_data["issue"],
-            severity=Severity(issue_data["severity"]),
+            severity=_safe_parse_severity(issue_data["severity"]),
             file=issue_data["file"],
             fix=issue_data["fix"]
         ))
@@ -502,7 +540,7 @@ Return ONLY valid JSON, no additional text."""
         modernization.append(ModernizationItem(
             pattern=mod_data["pattern"],
             suggestion=mod_data["suggestion"],
-            effort=Effort(mod_data["effort"])
+            effort=_safe_parse_effort(mod_data["effort"])
         ))
     
     return SecurityReport(security=security, modernization=modernization)
