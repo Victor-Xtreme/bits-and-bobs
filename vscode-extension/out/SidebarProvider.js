@@ -165,6 +165,18 @@ class SidebarProvider {
         }
     }
     async _analyzeWorkspace(force = false) {
+        const backendStatus = await this._checkBackendConfig();
+        if (backendStatus !== 'configured') {
+            this._statusBarItem.text = '$(error) RepoSense: Setup Required';
+            if (this._view) {
+                this._view.webview.postMessage({ type: 'setup' });
+                this._view.webview.postMessage({
+                    type: 'error',
+                    message: 'Backend credentials are not configured. Complete setup in the sidebar and try again.'
+                });
+            }
+            return;
+        }
         const analysisPath = await this._resolveAnalysisPath();
         if (!analysisPath) {
             this._statusBarItem.text = '$(error) RepoSense: Error';

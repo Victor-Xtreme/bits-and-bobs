@@ -94,8 +94,10 @@ class Settings(BaseSettings):
             raise ValueError(f'log_level must be one of {valid_levels}')
         return v_upper
     
+    # Only use .env file if it exists (for local dev), otherwise rely on OS env vars (for Render/production)
+    _env_file_path = Path(__file__).parent.parent / ".env"
     model_config = SettingsConfigDict(
-        env_file=str(Path(__file__).parent.parent / ".env"),
+        env_file=str(_env_file_path) if _env_file_path.exists() else None,
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore"
