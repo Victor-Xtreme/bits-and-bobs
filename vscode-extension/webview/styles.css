@@ -774,3 +774,69 @@ body {
 }
 
 /* Made with Bob */
+
+/* Sidebar Responsive Adjustments */
+@media screen and (max-width: 600px) {
+    .tab-bar {
+        flex-wrap: wrap;
+    }
+    
+    .tab-button {
+        flex: 1 1 30%;
+        padding: 8px 2px;
+        flex-direction: column;
+        gap: 4px;
+    }
+    
+    .tab-button.active {
+        background-color: var(--vscode-list-activeSelectionBackground);
+        color: var(--vscode-list-activeSelectionForeground);
+        border-bottom: 2px solid var(--vscode-panelTitle-activeBorder);
+    }
+    
+    .tab-label {
+        font-size: 10px;
+        text-align: center;
+        white-space: normal;
+        line-height: 1.2;
+    }
+    
+    .tab-icon {
+        font-size: 16px;
+    }
+}
+
+@media screen and (max-width: 250px) {
+    .tab-button {
+        flex: 1 1 45%; /* 2 per row on very tight sidebar */
+    }
+}
+
+/* Make content panels handle narrow widths */
+.panel {
+    padding: 10px;
+    overflow-x: hidden;
+}
+
+/* Ensure tables can scroll horizontally */
+table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+}
+
+/* Cards and grids should stack */
+@media screen and (max-width: 600px) {
+    .metrics-grid, .score-breakdown {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+    
+    .finding-card {
+        padding: 10px;
+    }
+    
+    .security-issue, .modernization-item {
+        padding: 10px;
+    }
+}
